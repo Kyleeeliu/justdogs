@@ -249,128 +249,134 @@ export default function MessagesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(0_32_96)]"></div>
+        <p className="text-sm text-gray-600 font-medium">Loading messages...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Messages</h1>
-          <p className="text-gray-600">Communicate with trainers, parents, and staff</p>
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Messages</h1>
+          <p className="text-gray-600 text-base">Communicate with trainers, parents, and staff</p>
         </div>
-        <div className="flex gap-2 mt-4 sm:mt-0">
-          <Button 
+        <div className="flex gap-3 mt-6 sm:mt-0">
+          <Button
             onClick={() => setShowNewMessageModal(true)}
+            className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
           >
             <PlusIcon className="h-4 w-4 mr-2" />
             New Message
-          </Button>
-          <Button 
-            onClick={debugUsers}
-            variant="outline"
-          >
-            Debug Users
           </Button>
         </div>
       </div>
 
       {/* Search */}
-      <div className="relative">
+      <div className="relative max-w-md">
         <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         <Input
           type="text"
           placeholder="Search messages..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
+          className="pl-10 h-11 border-gray-200 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] shadow-sm"
         />
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Messages</CardTitle>
-            <ChatBubbleLeftRightIcon className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-semibold text-gray-700">Total Messages</CardTitle>
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <ChatBubbleLeftRightIcon className="h-4 w-4 text-[rgb(0_32_96)]" />
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{messages.length}</div>
-            <p className="text-xs text-muted-foreground">
-              All messages
+          <CardContent className="pt-0">
+            <div className="text-2xl font-bold text-gray-900">{messages.length}</div>
+            <p className="text-xs text-gray-500 mt-1">
+              All conversations
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Unread</CardTitle>
-            <ClockIcon className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-semibold text-gray-700">Unread</CardTitle>
+            <div className="p-2 bg-orange-50 rounded-lg">
+              <ClockIcon className="h-4 w-4 text-orange-600" />
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{unreadMessages.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Messages to read
+          <CardContent className="pt-0">
+            <div className="text-2xl font-bold text-gray-900">{unreadMessages.length}</div>
+            <p className="text-xs text-gray-500 mt-1">
+              Require attention
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Recent</CardTitle>
-            <UserGroupIcon className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-sm font-semibold text-gray-700">Recent Activity</CardTitle>
+            <div className="p-2 bg-green-50 rounded-lg">
+              <UserGroupIcon className="h-4 w-4 text-green-600" />
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{recentMessages.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Last 5 messages
+          <CardContent className="pt-0">
+            <div className="text-2xl font-bold text-gray-900">{recentMessages.length}</div>
+            <p className="text-xs text-gray-500 mt-1">
+              Latest messages
             </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Messages List */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {filteredMessages.map((message) => (
-          <Card 
-            key={message.id} 
-            className={`hover:shadow-md transition-shadow cursor-pointer ${
-              !message.read_at ? 'border-[rgb(0_32_96)] border-opacity-20 bg-[rgb(0_32_96)] bg-opacity-5' : ''
+          <Card
+            key={message.id}
+            className={`hover:shadow-lg transition-all duration-200 cursor-pointer border-gray-200 ${
+              !message.read_at
+                ? 'border-l-4 border-l-[rgb(0_32_96)] bg-gradient-to-r from-[rgb(0_32_96)]/5 to-transparent shadow-sm'
+                : 'hover:border-gray-300'
             }`}
             onClick={() => handleMessageClick(message)}
           >
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-3 mb-3">
                     {!message.read_at && (
-                      <div className="w-2 h-2 bg-[rgb(0_32_96)] rounded-full"></div>
+                      <div className="w-2.5 h-2.5 bg-[rgb(0_32_96)] rounded-full flex-shrink-0"></div>
                     )}
-                    <h3 className="font-semibold text-lg">{message.subject}</h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getMessageTypeColor(message.is_announcement)}`}>
-                      {message.is_announcement ? 'Announcement' : 'Message'}
+                    <h3 className="font-semibold text-lg text-gray-900 truncate">{message.subject}</h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold flex-shrink-0 ${getMessageTypeColor(message.is_announcement)}`}>
+                      {message.is_announcement ? 'Announcement' : 'Direct'}
                     </span>
                   </div>
                   
-                  <div className="mb-3">
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">From:</span> {getSenderName(message.sender_id)}
+                  <div className="mb-4 space-y-1">
+                    <div className="flex items-center text-sm text-gray-600">
+                      <span className="font-medium text-gray-700">From:</span>
+                      <span className="ml-1">{getSenderName(message.sender_id)}</span>
                       {!message.is_announcement && (
                         <>
-                          <span className="mx-2">•</span>
-                          <span className="font-medium">To:</span> {getReceiverName(message.recipient_id)}
+                          <span className="mx-3 text-gray-400">•</span>
+                          <span className="font-medium text-gray-700">To:</span>
+                          <span className="ml-1">{getReceiverName(message.recipient_id)}</span>
                         </>
                       )}
-                    </p>
-                    <p className="text-sm text-gray-500">
+                    </div>
+                    <p className="text-sm text-gray-500 font-medium">
                       {formatDateTime(message.created_at)}
                     </p>
                   </div>
 
-                  <p className="text-gray-700 line-clamp-2">
+                  <p className="text-gray-700 line-clamp-2 leading-relaxed">
                     {message.content}
                   </p>
                 </div>
@@ -382,15 +388,20 @@ export default function MessagesPage() {
 
       {/* Empty State */}
       {filteredMessages.length === 0 && (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <ChatBubbleLeftRightIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No messages found</h3>
-            <p className="text-gray-600 mb-4">
-              {searchTerm ? 'Try adjusting your search terms.' : 'Start a conversation by sending your first message.'}
+        <Card className="border-gray-200 shadow-sm">
+          <CardContent className="p-16 text-center">
+            <div className="p-4 bg-gray-50 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+              <ChatBubbleLeftRightIcon className="h-10 w-10 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-3">No messages found</h3>
+            <p className="text-gray-600 mb-6 max-w-md mx-auto leading-relaxed">
+              {searchTerm ? 'Try adjusting your search terms to find what you\'re looking for.' : 'Start a conversation by sending your first message to connect with others.'}
             </p>
             {!searchTerm && (
-              <Button onClick={() => setShowNewMessageModal(true)}>
+              <Button
+                onClick={() => setShowNewMessageModal(true)}
+                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
+              >
                 <PlusIcon className="h-4 w-4 mr-2" />
                 Send First Message
               </Button>
@@ -401,56 +412,60 @@ export default function MessagesPage() {
 
       {/* New Message Modal */}
       {showNewMessageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b">
-              <h2 className="text-xl font-semibold text-gray-900">New Message</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+              <h2 className="text-xl font-semibold text-gray-900">Compose Message</h2>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowNewMessageModal(false)}
+                className="hover:bg-gray-200 rounded-full p-2"
               >
-                <XMarkIcon className="h-5 w-5" />
+                <XMarkIcon className="h-5 w-5 text-gray-500" />
               </Button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-6">
               {/* Message Type */}
-              <div className="flex items-center space-x-4">
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    name="messageType"
-                    checked={!formData.is_announcement}
-                    onChange={() => handleInputChange('is_announcement', false)}
-                    className="mr-2"
-                  />
-                  <span className="text-sm font-medium text-gray-900">Direct Message</span>
-                </label>
-                {currentUser?.role === 'admin' && (
-                  <label className="flex items-center">
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-gray-700">Message Type</label>
+                <div className="flex items-center space-x-6">
+                  <label className="flex items-center cursor-pointer">
                     <input
                       type="radio"
                       name="messageType"
-                      checked={formData.is_announcement}
-                      onChange={() => handleInputChange('is_announcement', true)}
-                      className="mr-2"
+                      checked={!formData.is_announcement}
+                      onChange={() => handleInputChange('is_announcement', false)}
+                      className="mr-3 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300"
                     />
-                    <span className="text-sm font-medium text-gray-900">Announcement</span>
+                    <span className="text-sm font-medium text-gray-900">Direct Message</span>
                   </label>
-                )}
+                  {currentUser?.role === 'admin' && (
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="messageType"
+                        checked={formData.is_announcement}
+                        onChange={() => handleInputChange('is_announcement', true)}
+                        className="mr-3 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300"
+                      />
+                      <span className="text-sm font-medium text-gray-900">Announcement</span>
+                    </label>
+                  )}
+                </div>
               </div>
 
               {/* Recipient Selection */}
               {!formData.is_announcement && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    To
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Recipient
                   </label>
                   <select
                     value={formData.recipient_id}
                     onChange={(e) => handleInputChange('recipient_id', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-transparent text-gray-900 bg-white"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-[rgb(0_32_96)] text-gray-900 bg-white shadow-sm transition-colors"
                     required
                   >
                     <option value="">Select recipient...</option>
@@ -465,13 +480,13 @@ export default function MessagesPage() {
 
               {/* Target Roles for Announcements */}
               {formData.is_announcement && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Target Roles (leave empty to send to all users)
+                <div className="space-y-3">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Target Audience
                   </label>
-                  <div className="space-y-2">
+                  <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
                     {(['parent', 'trainer', 'behaviorist'] as UserRole[]).map(role => (
-                      <label key={role} className="flex items-center">
+                      <label key={role} className="flex items-center cursor-pointer">
                         <input
                           type="checkbox"
                           checked={formData.target_roles.includes(role)}
@@ -481,21 +496,21 @@ export default function MessagesPage() {
                               : formData.target_roles.filter(r => r !== role);
                             handleInputChange('target_roles', newRoles);
                           }}
-                          className="mr-2"
+                          className="mr-3 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300 rounded"
                         />
-                        <span className="text-sm capitalize text-gray-900">{role}s</span>
+                        <span className="text-sm font-medium capitalize text-gray-900">{role}s</span>
                       </label>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-gray-600">
                     Select specific roles to target, or leave all unchecked to send to everyone.
                   </p>
                 </div>
               )}
 
               {/* Subject */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">
                   Subject
                 </label>
                 <Input
@@ -503,34 +518,39 @@ export default function MessagesPage() {
                   value={formData.subject}
                   onChange={(e) => handleInputChange('subject', e.target.value)}
                   placeholder="Enter message subject..."
+                  className="h-11 border-gray-300 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] shadow-sm"
                   required
                 />
               </div>
 
               {/* Content */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Message
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Message Content
                 </label>
                 <textarea
                   value={formData.content}
                   onChange={(e) => handleInputChange('content', e.target.value)}
                   placeholder="Type your message here..."
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-transparent min-h-[120px] resize-vertical text-gray-900 bg-white"
+                  className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-[rgb(0_32_96)] min-h-[140px] resize-vertical text-gray-900 bg-white shadow-sm transition-colors"
                   required
                 />
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end space-x-3 pt-4">
+              <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setShowNewMessageModal(false)}
+                  className="px-6 py-2 border-gray-300 hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
-                <Button type="submit">
+                <Button
+                  type="submit"
+                  className="px-6 py-2 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
+                >
                   Send Message
                 </Button>
               </div>
@@ -541,65 +561,75 @@ export default function MessagesPage() {
 
       {/* Message Detail Modal */}
       {selectedMessage && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b">
-              <div className="flex items-center space-x-3">
-                <h2 className="text-xl font-semibold text-gray-900">{selectedMessage.subject}</h2>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getMessageTypeColor(selectedMessage.is_announcement)}`}>
-                  {selectedMessage.is_announcement ? 'Announcement' : 'Message'}
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+              <div className="flex items-center space-x-4">
+                <h2 className="text-xl font-semibold text-gray-900 truncate">{selectedMessage.subject}</h2>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getMessageTypeColor(selectedMessage.is_announcement)}`}>
+                  {selectedMessage.is_announcement ? 'Announcement' : 'Direct'}
                 </span>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedMessage(null)}
-                className="hover:bg-gray-100"
+                className="hover:bg-gray-200 rounded-full p-2"
               >
-                <XMarkIcon className="h-5 w-5" />
+                <XMarkIcon className="h-5 w-5 text-gray-500" />
               </Button>
             </div>
             
-            <div className="p-6 space-y-4">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">From:</span> {getSenderName(selectedMessage.sender_id)}
-                  </p>
-                  {!selectedMessage.is_announcement && (
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">To:</span> {getReceiverName(selectedMessage.recipient_id)}
-                    </p>
-                  )}
-                  {selectedMessage.is_announcement && selectedMessage.target_roles && selectedMessage.target_roles.length > 0 && (
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">Target Roles:</span> {selectedMessage.target_roles.join(', ')}
-                    </p>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    <span className="font-medium">Sent:</span> {formatDateTime(selectedMessage.created_at)}
-                  </p>
-                  {selectedMessage.read_at && (
-                    <p className="text-sm text-gray-500">
-                      <span className="font-medium">Read:</span> {formatDateTime(selectedMessage.read_at)}
-                    </p>
-                  )}
+            <div className="p-6 space-y-6">
+              <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-semibold text-gray-700">From:</span>
+                      <span className="text-sm text-gray-900 font-medium">{getSenderName(selectedMessage.sender_id)}</span>
+                    </div>
+                    {!selectedMessage.is_announcement && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-semibold text-gray-700">To:</span>
+                        <span className="text-sm text-gray-900 font-medium">{getReceiverName(selectedMessage.recipient_id)}</span>
+                      </div>
+                    )}
+                    {selectedMessage.is_announcement && selectedMessage.target_roles && selectedMessage.target_roles.length > 0 && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-semibold text-gray-700">Target Roles:</span>
+                        <span className="text-sm text-gray-900 font-medium">{selectedMessage.target_roles.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-semibold text-gray-700">Sent:</span>
+                      <span className="text-sm text-gray-600">{formatDateTime(selectedMessage.created_at)}</span>
+                    </div>
+                    {selectedMessage.read_at && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-semibold text-gray-700">Read:</span>
+                        <span className="text-sm text-gray-600">{formatDateTime(selectedMessage.read_at)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               
-              <div className="border-t pt-4">
-                <h3 className="font-medium text-gray-900 mb-2">Message Content:</h3>
-                <div className="bg-white border rounded-lg p-4">
-                  <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Message Content</h3>
+                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                  <p className="text-gray-800 whitespace-pre-wrap leading-relaxed text-base">
                     {selectedMessage.content}
                   </p>
                 </div>
               </div>
               
-              <div className="flex justify-end space-x-3 pt-4 border-t">
+              <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
                 <Button
                   variant="outline"
                   onClick={() => setSelectedMessage(null)}
+                  className="px-6 py-2 border-gray-300 hover:bg-gray-50"
                 >
                   Close
                 </Button>
@@ -616,6 +646,7 @@ export default function MessagesPage() {
                       setSelectedMessage(null);
                       setShowNewMessageModal(true);
                     }}
+                    className="px-6 py-2 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
                   >
                     Reply
                   </Button>

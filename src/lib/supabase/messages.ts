@@ -18,6 +18,8 @@ export const createMessage = async (messageData: Omit<Message, 'id' | 'created_a
     return localMessages.createMessage(messageData);
   }
 
+  console.log('Attempting to create message in Supabase:', messageData);
+
   try {
     const { data, error } = await supabase
       .from(MESSAGES_TABLE)
@@ -36,13 +38,45 @@ export const createMessage = async (messageData: Omit<Message, 'id' | 'created_a
       .single();
 
     if (error) {
-      console.error('Error creating message:', error);
-      throw error;
+      // Create comprehensive error log for messages
+      console.error('SUPABASE MESSAGE ERROR DETAILS:');
+      console.error('- Error Message:', error.message || 'No message');
+      console.error('- Error Code:', error.code || 'No code');
+      console.error('- Error Details:', error.details || 'No details');
+      console.error('- Error Hint:', error.hint || 'No hint');
+      console.error('- Raw Error Object:', error);
+      
+      // Try to stringify the error in multiple ways
+      try {
+        console.error('- Stringified Error:', JSON.stringify(error));
+      } catch (e) {
+        console.error('- Could not stringify error');
+      }
+      
+      try {
+        console.error('- Error with getOwnPropertyNames:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      } catch (e) {
+        console.error('- Could not stringify error with getOwnPropertyNames');
+      }
+      
+      console.log('Falling back to local database due to Supabase error');
+      return localMessages.createMessage(messageData);
     }
 
+    console.log('Successfully created message in Supabase:', data?.id);
     return data;
-  } catch (error) {
-    console.error('Supabase message creation failed, falling back to local database:', error);
+  } catch (catchError) {
+    console.error('CATCH BLOCK MESSAGE ERROR DETAILS:');
+    console.error('- Catch Error Type:', typeof catchError);
+    console.error('- Catch Error Name:', catchError instanceof Error ? catchError.name : 'Not an Error object');
+    console.error('- Catch Error Message:', catchError instanceof Error ? catchError.message : String(catchError));
+    console.error('- Raw Catch Error:', catchError);
+    
+    if (catchError instanceof Error) {
+      console.error('- Catch Error Stack:', catchError.stack);
+    }
+    
+    console.log('Falling back to local database due to catch error');
     return localMessages.createMessage(messageData);
   }
 };
@@ -111,12 +145,23 @@ export const getMessagesByUser = async (userId: string): Promise<Message[]> => {
     const fortyEightHoursAgo = new Date();
     fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
     
+    console.log('Fetching announcements for user:', userId);
+    console.log('Current time:', new Date().toISOString());
+    console.log('48 hours ago cutoff:', fortyEightHoursAgo.toISOString());
+    
     const { data: announcements, error: announcementError } = await supabase
       .from(MESSAGES_TABLE)
       .select('*')
       .eq('is_announcement', true)
       .gte('created_at', fortyEightHoursAgo.toISOString())
       .order('created_at', { ascending: false });
+
+    console.log('Raw announcements from Supabase:', announcements?.length || 0);
+    if (announcements) {
+      announcements.forEach(ann => {
+        console.log(`Announcement: ${ann.subject} - Created: ${ann.created_at}`);
+      });
+    }
 
     if (announcementError) {
       console.error('Error fetching announcements:', announcementError);

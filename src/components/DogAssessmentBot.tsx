@@ -66,7 +66,7 @@ const questions: Question[] = [
     id: 'size',
     question: "What size is your dog?",
     type: 'select',
-    options: ['Small (under 25 lbs)', 'Medium (25-60 lbs)', 'Large (60-100 lbs)', 'Extra Large (100+ lbs)'],
+    options: ['Small (under 11 kg)', 'Medium (11-27 kg)', 'Large (27-45 kg)', 'Extra Large (45+ kg)'],
     required: true,
     category: 'basic'
   },
@@ -348,16 +348,16 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
-              <ChatBubbleLeftRightIcon className="h-6 w-6 text-white" />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b">
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
+              <ChatBubbleLeftRightIcon className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Dog Assessment Bot</h2>
-              <p className="text-sm text-gray-600">Let&apos;s create a profile for your dog</p>
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Dog Assessment Bot</h2>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Let&apos;s create a profile for your dog</p>
             </div>
           </div>
           <Button
@@ -370,7 +370,7 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
         </div>
 
         {!isComplete ? (
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {/* Progress Bar */}
             <div className="mb-6">
               <div className="flex justify-between text-sm text-gray-600 mb-2">
@@ -386,14 +386,14 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
             </div>
 
             {/* Question */}
-            <div className="mb-6">
-              <div className="flex items-center space-x-2 mb-4">
+            <div className="mb-4 sm:mb-6">
+              <div className="flex items-center space-x-2 mb-3 sm:mb-4">
                 {getCategoryIcon(currentQuestion.category)}
-                <span className="text-sm font-medium text-gray-600 capitalize">
+                <span className="text-xs sm:text-sm font-medium text-gray-600 capitalize">
                   {currentQuestion.category} Information
                 </span>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-3 sm:mb-4 leading-relaxed">
                 {currentQuestion.question}
               </h3>
 
@@ -408,27 +408,27 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
               )}
 
               {currentQuestion.type === 'select' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {currentQuestion.options?.map((option) => (
-                    <label key={option} className="flex items-center space-x-3 cursor-pointer">
+                    <label key={option} className="flex items-start space-x-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
                       <input
                         type="radio"
                         name={currentQuestion.id}
                         value={option}
                         checked={answers[currentQuestion.id] === option}
                         onChange={(e) => handleAnswer(e.target.value)}
-                        className="text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)]"
+                        className="text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] mt-0.5"
                       />
-                      <span className="text-gray-700">{option}</span>
+                      <span className="text-sm sm:text-base text-gray-700 leading-relaxed">{option}</span>
                     </label>
                   ))}
                 </div>
               )}
 
               {currentQuestion.type === 'checkbox' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {currentQuestion.options?.map((option) => (
-                    <label key={option} className="flex items-center space-x-3 cursor-pointer">
+                    <label key={option} className="flex items-start space-x-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
                       <input
                         type="checkbox"
                         checked={Array.isArray(answers[currentQuestion.id]) ? (answers[currentQuestion.id] as string[]).includes(option) : false}
@@ -440,9 +440,9 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
                             handleAnswer(currentValues.filter((v: string) => v !== option));
                           }
                         }}
-                        className="text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)]"
+                        className="text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] mt-0.5"
                       />
-                      <span className="text-gray-700">{option}</span>
+                      <span className="text-sm sm:text-base text-gray-700 leading-relaxed">{option}</span>
                     </label>
                   ))}
                 </div>
@@ -450,25 +450,26 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
             </div>
 
             {/* Navigation */}
-            <div className="flex justify-between">
+            <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0">
               <Button
                 variant="outline"
                 onClick={handlePrevious}
                 disabled={currentQuestionIndex === 0}
+                className="w-full sm:w-auto"
               >
                 Previous
               </Button>
               <Button
                 onClick={handleNext}
                 disabled={!canProceed()}
-                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] w-full sm:w-auto"
               >
                 {currentQuestionIndex === questions.length - 1 ? 'Complete Assessment' : 'Next'}
               </Button>
             </div>
           </div>
         ) : (
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             <div className="text-center mb-6">
               <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Assessment Complete!</h3>
@@ -494,7 +495,7 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                       <div>
                         <span className="font-medium">Age:</span> {result.dogProfile.age}
                       </div>
@@ -551,27 +552,28 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
                 </Card>
 
                 {/* Action Buttons */}
-                <div className="flex justify-between space-x-3">
+                <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0 sm:space-x-3">
                   <Button
                     variant="outline"
                     onClick={onClose}
+                    className="w-full sm:w-auto order-3 sm:order-1"
                   >
                     Close
                   </Button>
-                  <div className="flex space-x-3">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:space-x-3 order-1 sm:order-2">
                     <Button
                       variant="outline"
                       onClick={() => {
                         // Redirect to login page
                         window.location.href = '/login';
                       }}
-                      className="border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white"
+                      className="border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white w-full sm:w-auto"
                     >
                       Login to Save Profile
                     </Button>
                     <Button
                       onClick={handleSubmit}
-                      className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+                      className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] w-full sm:w-auto"
                     >
                       Save Assessment
                     </Button>

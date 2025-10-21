@@ -91,6 +91,8 @@ export const getUserByEmail = async (email: string): Promise<User | null> => {
   }
 
   try {
+    console.log('Attempting to fetch user by email from Supabase:', email);
+    
     const { data, error } = await supabase
       .from(USERS_TABLE)
       .select('*')
@@ -98,13 +100,43 @@ export const getUserByEmail = async (email: string): Promise<User | null> => {
       .single();
 
     if (error) {
-      console.error('Error fetching user by email from Supabase:', error);
-      throw error;
+      // Handle specific Supabase errors
+      if (error.code === 'PGRST116') {
+        // No rows returned - user doesn't exist
+        console.log('User not found in Supabase:', email);
+        return null;
+      }
+      
+      // Log error with all possible properties
+      const errorInfo = {
+        message: error.message || 'Unknown error',
+        code: error.code || 'No code',
+        details: error.details || 'No details',
+        hint: error.hint || 'No hint'
+      };
+      
+      console.log('Error fetching user by email from Supabase - Message:', error.message || 'No message');
+      console.log('Error fetching user by email from Supabase - Code:', error.code || 'No code');
+      console.log('Error fetching user by email from Supabase - Details:', error.details || 'No details');
+      console.log('Error fetching user by email from Supabase - Hint:', error.hint || 'No hint');
+      console.log('Full error object stringified:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      
+      // For other errors, fall back to local database
+      console.log('Falling back to local database due to Supabase error');
+      return localUsers.getUserByEmail(email) || null;
     }
 
+    console.log('Successfully fetched user from Supabase:', data?.email);
     return data;
   } catch (error) {
-    console.error('Supabase user by email retrieval failed, falling back to local database:', error);
+    const errorInfo = {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    };
+    
+    console.log('Supabase user by email retrieval failed, falling back to local database:', errorInfo);
     return localUsers.getUserByEmail(email) || null;
   }
 };
@@ -188,25 +220,46 @@ export const syncUserWithAuth = async (userData: Omit<User, 'id' | 'created_at' 
 
 // Get current user from Supabase auth and sync with users table
 export const getCurrentSupabaseUser = async (): Promise<User | null> => {
-  const { data: { user: authUser } } = await supabase.auth.getUser();
-  
-  if (!authUser) {
+  try {
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError) {
+      console.error('Error getting authenticated user:', authError);
+      return null;
+    }
+    
+    if (!authUser || !authUser.email) {
+      console.log('No authenticated user found');
+      return null;
+    }
+
+    // Check if user exists in our users table
+    let user = await getUserByEmail(authUser.email);
+    
+    if (!user) {
+      console.log('User not found in users table, creating new user profile');
+      try {
+        // Create user profile if it doesn't exist
+        user = await createUser({
+          email: authUser.email,
+          full_name: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
+          role: authUser.user_metadata?.role || 'parent',
+          phone: authUser.user_metadata?.phone,
+          avatar_url: authUser.user_metadata?.avatar_url,
+        });
+        console.log('Created new user profile:', user);
+      } catch (createError) {
+        console.error('Error creating user profile:', createError);
+        return null;
+      }
+    }
+
+    return user;
+  } catch (error) {
+    console.error('Error in getCurrentSupabaseUser:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return null;
   }
-
-  // Check if user exists in our users table
-  let user = await getUserByEmail(authUser.email!);
-  
-  if (!user) {
-    // Create user profile if it doesn't exist
-    user = await createUser({
-      email: authUser.email!,
-      full_name: authUser.user_metadata?.full_name || authUser.email!.split('@')[0],
-      role: authUser.user_metadata?.role || 'parent',
-      phone: authUser.user_metadata?.phone,
-      avatar_url: authUser.user_metadata?.avatar_url,
-    });
-  }
-
-  return user;
 };

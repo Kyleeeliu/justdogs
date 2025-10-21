@@ -99,12 +99,26 @@ const filterAnnouncementsByRetention = (messages: Message[]): Message[] => {
   const fortyEightHoursAgo = new Date();
   fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
   
-  return messages.filter(message => {
+  console.log('Local DB: Filtering announcements');
+  console.log('Current time:', new Date().toISOString());
+  console.log('48 hours ago cutoff:', fortyEightHoursAgo.toISOString());
+  console.log('Total messages before filtering:', messages.length);
+  
+  const filtered = messages.filter(message => {
     if (!message.is_announcement) return true;
     
     const messageDate = new Date(message.created_at);
-    return messageDate >= fortyEightHoursAgo;
+    const isWithin48Hours = messageDate >= fortyEightHoursAgo;
+    
+    if (message.is_announcement) {
+      console.log(`Announcement: ${message.subject} - Created: ${message.created_at} - Within 48h: ${isWithin48Hours}`);
+    }
+    
+    return isWithin48Hours;
   });
+  
+  console.log('Messages after 48h filtering:', filtered.length);
+  return filtered;
 };
 
 export const getAllMessages = (): Message[] => {

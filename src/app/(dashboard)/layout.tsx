@@ -115,9 +115,9 @@ export default function DashboardLayout({
       {/* Mobile sidebar */}
       <div className={`fixed inset-0 z-50 lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}>
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
-        <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-white">
+        <div className="fixed inset-y-0 left-0 flex w-72 sm:w-64 flex-col bg-white shadow-xl">
           <div className="flex h-16 items-center justify-between px-4">
-            <h1 className="text-xl font-bold text-[rgb(0_32_96)]">🐕 Just Dogs</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-[rgb(0_32_96)]">🐕 Just Dogs</h1>
             <Button
               variant="ghost"
               size="sm"
@@ -126,21 +126,21 @@ export default function DashboardLayout({
               <XMarkIcon className="h-6 w-6" />
             </Button>
           </div>
-          <nav className="flex-1 space-y-1 px-2 py-4">
+          <nav className="flex-1 space-y-1 px-3 py-4">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
+                  className={`group flex items-center px-3 py-3 text-base font-medium rounded-lg transition-colors ${
                       isActive
                         ? 'bg-[rgb(0_32_96)] text-white'
-                        : 'text-gray-600 hover:bg-[rgb(0_32_96)] hover:bg-opacity-10 hover:text-white'
+                        : 'text-gray-600 hover:bg-[rgb(0_32_96)] hover:bg-opacity-10 hover:text-[rgb(0_32_96)]'
                     }`}
                     onClick={() => setSidebarOpen(false)}
                 >
-                  <item.icon className="mr-3 h-5 w-5" />
+                  <item.icon className="mr-3 h-6 w-6" />
                   {item.name}
                 </Link>
               );
@@ -148,23 +148,22 @@ export default function DashboardLayout({
           </nav>
           <div className="border-t border-gray-200 p-4">
             <div className="flex items-center mb-4">
-              <div className="h-8 w-8 rounded-full bg-[rgb(0_32_96)] flex items-center justify-center">
-                <span className="text-sm font-medium text-white">
+              <div className="h-10 w-10 rounded-full bg-[rgb(0_32_96)] flex items-center justify-center">
+                <span className="text-base font-medium text-white">
                   {user?.full_name?.charAt(0) || 'U'}
                 </span>
               </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-700">{user?.full_name}</p>
-                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+              <div className="ml-3 flex-1 min-w-0">
+                <p className="text-base font-medium text-gray-700 truncate">{user?.full_name}</p>
+                <p className="text-sm text-gray-500 capitalize">{user?.role}</p>
               </div>
             </div>
             <Button
               variant="outline"
-              size="sm"
-              className="w-full border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white"
+              className="w-full border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white min-h-[44px]"
               onClick={handleSignOut}
             >
-              <ArrowRightOnRectangleIcon className="h-4 w-4 mr-2" />
+              <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" />
               Sign Out
             </Button>
           </div>
@@ -227,8 +226,7 @@ export default function DashboardLayout({
         <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
           <Button
             variant="ghost"
-            size="sm"
-            className="lg:hidden"
+            className="lg:hidden min-h-[44px] min-w-[44px] p-2"
             onClick={() => setSidebarOpen(true)}
           >
             <Bars3Icon className="h-6 w-6" />
@@ -239,7 +237,7 @@ export default function DashboardLayout({
             <div className="flex items-center gap-x-4 lg:gap-x-6">
               <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" />
               <div className="flex items-center gap-x-4">
-                <span className="text-sm text-gray-700">
+                <span className="text-sm lg:text-base text-gray-700 truncate">
                   Welcome back, {user?.full_name}
                 </span>
               </div>
@@ -248,7 +246,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Page content */}
-        <main className="py-6">
+        <main className="py-4 sm:py-6">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {children}
           </div>
