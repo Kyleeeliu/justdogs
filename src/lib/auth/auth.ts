@@ -58,9 +58,22 @@ const mockUsers: User[] = [
 
 // Check if Supabase is properly configured
 const isSupabaseConfigured = () => {
-  return process.env.NEXT_PUBLIC_SUPABASE_URL && 
-         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-         process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co';
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  // Temporarily force mock mode for testing
+  // Change this to true when you want to use real Supabase Auth
+  const FORCE_MOCK_MODE = true;
+  
+  if (FORCE_MOCK_MODE) {
+    console.log('🔧 Using mock authentication mode for testing');
+    return false;
+  }
+  
+  return url && 
+         key &&
+         url !== 'https://placeholder.supabase.co' &&
+         key !== 'placeholder-key';
 };
 
 export async function signIn(email: string, password: string) {
@@ -126,16 +139,36 @@ export async function signIn(email: string, password: string) {
     throw new Error('Invalid email or password');
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-  if (error) {
-    throw new Error(error.message);
+    if (error) {
+      console.error('Supabase signin error:', error);
+      throw new Error(error.message);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    // If we get a database error, fall back to mock authentication
+    console.log('Falling back to mock authentication due to database error');
+    
+    // Check demo accounts
+    const mockUser = mockUsers.find(user => user.email === email);
+    if (mockUser) {
+      const validPasswords = ['admin123', 'trainer123', 'parent123'];
+      if (validPasswords.includes(password)) {
+        const syncedUser = syncUserWithLocalStorage(mockUser);
+        safeSetLocalStorage('mockUser', JSON.stringify(syncedUser));
+        return { user: syncedUser, session: { user: syncedUser } };
+      }
+    }
+    
+    throw new Error('Invalid email or password');
   }
-
-  return data;
 }
 
 export async function signUp(email: string, password: string, fullName: string, role: UserRole) {

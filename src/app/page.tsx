@@ -91,88 +91,73 @@ export default function Home() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative py-32 px-6">
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+        {/* Background Image */}
+        <div className="absolute inset-0 z-0">
+          <img 
+            src="/1000531276.jpg" 
+            alt="German Shepherd in natural setting" 
+            className="w-full h-full object-cover"
+          />
+          {/* Dark overlay for text readability */}
+          <div className="absolute inset-0 bg-black/40"></div>
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[rgb(0_32_96)]/20 via-transparent to-[rgb(0_32_96)]/30"></div>
+        </div>
         
-        <div className="max-w-4xl mx-auto text-center">
-
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-light text-gray-900 mb-6 leading-tight tracking-tight">
+        {/* Content */}
+        <div className="relative z-10 max-w-6xl mx-auto text-center px-6 py-20">
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight tracking-tight drop-shadow-lg">
             Professional Dog Services
           </h1>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-light text-gray-600 mb-8 leading-relaxed">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-light text-white/90 mb-8 leading-relaxed drop-shadow-md">
             For every need
           </h2>
-          <p className="text-lg sm:text-xl text-gray-500 mb-12 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-lg sm:text-xl text-white/80 mb-12 max-w-3xl mx-auto leading-relaxed drop-shadow-md">
             From pet care to specialized training, we provide comprehensive dog services 
-            with professional management.
+            with professional management. Trusted by hundreds of happy dogs and their families.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
             <Button 
               onClick={() => setShowAssessmentBot(true)}
               size="lg" 
-              className="text-lg px-8 py-4 bg-gray-900 hover:bg-gray-800 text-white rounded-full transition-all duration-300 hover:scale-105"
+              className="text-lg px-8 py-4 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white rounded-full transition-all duration-300 hover:scale-105 shadow-xl hover:shadow-2xl"
             >
-              Get Personalized Recommendations
+              🐕 Get Personalized Recommendations
             </Button>
             <Link href="/register">
               <Button 
                 variant="outline" 
                 size="lg" 
-                className="text-lg px-8 py-4 border-gray-300 text-gray-700 hover:bg-gray-50 rounded-full transition-all duration-300"
+                className="text-lg px-8 py-4 border-2 border-white text-white hover:bg-white hover:text-[rgb(0_32_96)] rounded-full transition-all duration-300 hover:scale-105 shadow-xl hover:shadow-2xl"
               >
                 Start Your Journey
               </Button>
             </Link>
           </div>
 
-          
           {/* Animated Trust Indicators */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-2xl mx-auto">
-            <div className="text-center group">
-              <div className="text-2xl font-bold text-[rgb(0_32_96)] mb-2 group-hover:scale-110 transition-transform duration-300">500+</div>
-              <div className="text-sm text-gray-600 group-hover:text-[rgb(0_32_96)] transition-colors">Happy Dogs</div>
-              <div className="w-8 h-1 bg-[rgb(0_32_96)] mx-auto mt-2 rounded-full animate-pulse"></div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 max-w-3xl mx-auto">
+            <div className="text-center group bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-all duration-300 hover:scale-105">
+              <div className="text-3xl font-bold text-white mb-2 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg">500+</div>
+              <div className="text-sm text-white/90 group-hover:text-white transition-colors font-medium">Happy Dogs</div>
+              <div className="w-8 h-1 bg-white mx-auto mt-3 rounded-full animate-pulse"></div>
             </div>
-            <div className="text-center group">
-              <div className="text-2xl font-bold text-[rgb(0_32_96)] mb-2 group-hover:scale-110 transition-transform duration-300">50+</div>
-              <div className="text-sm text-gray-600 group-hover:text-[rgb(0_32_96)] transition-colors">Professional Trainers</div>
-              <div className="w-8 h-1 bg-[rgb(0_32_96)] mx-auto mt-2 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div>
+            <div className="text-center group bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-all duration-300 hover:scale-105">
+              <div className="text-3xl font-bold text-white mb-2 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg">50+</div>
+              <div className="text-sm text-white/90 group-hover:text-white transition-colors font-medium">Professional Trainers</div>
+              <div className="w-8 h-1 bg-white mx-auto mt-3 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div>
             </div>
-            <div className="text-center group">
-              <div className="text-2xl font-bold text-[rgb(0_32_96)] mb-2 group-hover:scale-110 transition-transform duration-300">98%</div>
-              <div className="text-sm text-gray-600 group-hover:text-[rgb(0_32_96)] transition-colors">Satisfaction Rate</div>
-              <div className="w-8 h-1 bg-[rgb(0_32_96)] mx-auto mt-2 rounded-full animate-pulse" style={{animationDelay: '1s'}}></div>
+            <div className="text-center group bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-all duration-300 hover:scale-105">
+              <div className="text-3xl font-bold text-white mb-2 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg">98%</div>
+              <div className="text-sm text-white/90 group-hover:text-white transition-colors font-medium">Satisfaction Rate</div>
+              <div className="w-8 h-1 bg-white mx-auto mt-3 rounded-full animate-pulse" style={{animationDelay: '1s'}}></div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Scroll Down Animation */}
-      {showScrollIndicator && (
-        <div className="flex justify-center py-8 bg-gradient-to-b from-white to-gray-50 transition-opacity duration-500">
-          <button 
-            onClick={scrollToNext}
-            className="flex flex-col items-center space-y-3 animate-scroll-bounce hover:scale-110 transition-transform duration-300 cursor-pointer group"
-            aria-label="Scroll to next section"
-          >
-            <span className="text-sm text-gray-500 font-medium group-hover:text-[rgb(0_32_96)] transition-colors">
-              Scroll to explore
-            </span>
-            <div className="w-6 h-10 border-2 border-[rgb(0_32_96)] rounded-full flex justify-center group-hover:border-[rgb(0_24_72)] transition-colors relative">
-              <div className="w-1 h-3 bg-[rgb(0_32_96)] rounded-full mt-2 animate-scroll-indicator group-hover:bg-[rgb(0_24_72)] transition-colors"></div>
-            </div>
-            <svg 
-              className="w-4 h-4 text-[rgb(0_32_96)] animate-scroll-bounce group-hover:text-[rgb(0_24_72)] transition-colors" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-              style={{animationDelay: '0.3s'}}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </button>
-        </div>
-      )}
 
       {/* Meet the Trainers */}
       <section id="team" className="py-16 sm:py-24 px-4 sm:px-6 lg:px-8 bg-gray-50">
