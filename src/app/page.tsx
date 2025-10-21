@@ -48,40 +48,44 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gradient-to-br from-[rgb(0_32_96)] from-opacity-5 via-white to-gray-50">
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6">
+      <header className="bg-white shadow-sm border-b sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center">
-                <img 
-                  src="/images/icons/logo.png" 
-                  alt="Just Dogs Logo" 
-                  className="w-6 h-6 object-contain"
-                />
-              </div>
-              <span className="ml-3 text-xl font-semibold text-gray-900">Just Dogs</span>
+              <div className="flex-shrink-0">
+                          <h1 className="text-2xl font-bold text-[rgb(0_32_96)] flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center">
+              <img 
+                src="/images/icons/logo.png" 
+                alt="Just Dogs Logo" 
+                className="w-6 h-6 object-contain"
+              />
             </div>
-            <nav className="hidden md:flex items-center space-x-8">
-              <Link href="#team" className="text-gray-600 hover:text-gray-900 font-medium transition-colors text-sm">
-                Team
+            <span>Just Dogs</span>
+          </h1>
+              </div>
+            </div>
+            <nav className="hidden md:flex items-center space-x-6">
+              <Link href="#team" className="text-gray-600 hover:text-[rgb(0_32_96)] font-medium transition-colors">
+                Our Team
               </Link>
-              <Link href="#gallery" className="text-gray-600 hover:text-gray-900 font-medium transition-colors text-sm">
-                Gallery
+              <Link href="#gallery" className="text-gray-600 hover:text-[rgb(0_32_96)] font-medium transition-colors">
+                Our Dogs
               </Link>
-              <Link href="#services" className="text-gray-600 hover:text-gray-900 font-medium transition-colors text-sm">
+              <Link href="#services" className="text-gray-600 hover:text-[rgb(0_32_96)] font-medium transition-colors">
                 Services
               </Link>
             </nav>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               <Link href="/login">
-                <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
+                <Button variant="outline" className="border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white transition-colors">
                   Sign In
                 </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm" className="bg-gray-900 hover:bg-gray-800 text-white rounded-full px-6">
+                <Button className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] transition-colors">
                   Get Started
                 </Button>
               </Link>
@@ -91,36 +95,60 @@ export default function Home() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative py-32 px-6">
+      <section className="relative py-16 sm:py-24 px-4 sm:px-6 lg:px-8 overflow-hidden">
+        {/* Animated background dog images */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-10 left-10 w-32 h-32 rounded-full overflow-hidden animate-bounce" style={{animationDuration: '3s'}}>
+            <img src="/1000524395.jpg" alt="Happy dog" className="w-full h-full object-cover" />
+          </div>
+          <div className="absolute top-20 right-20 w-24 h-24 rounded-full overflow-hidden animate-pulse" style={{animationDuration: '2s'}}>
+            <img src="/1000524743.jpg" alt="Playful dog" className="w-full h-full object-cover" />
+          </div>
+          <div className="absolute bottom-20 left-20 w-28 h-28 rounded-full overflow-hidden animate-bounce" style={{animationDuration: '4s', animationDelay: '1s'}}>
+            <img src="/1000525223.jpg" alt="Training dog" className="w-full h-full object-cover" />
+          </div>
+          <div className="absolute bottom-10 right-10 w-20 h-20 rounded-full overflow-hidden animate-pulse" style={{animationDuration: '2.5s', animationDelay: '0.5s'}}>
+            <img src="/1000531276.jpg" alt="Cute dog" className="w-full h-full object-cover" />
+          </div>
+        </div>
         
-        <div className="max-w-4xl mx-auto text-center">
+        {/* Floating elements */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-4 h-4 bg-[rgb(0_32_96)] bg-opacity-20 rounded-full animate-ping" style={{animationDuration: '3s'}}></div>
+          <div className="absolute top-1/3 right-1/3 w-3 h-3 bg-[rgb(0_32_96)] bg-opacity-30 rounded-full animate-ping" style={{animationDuration: '2s', animationDelay: '1s'}}></div>
+          <div className="absolute bottom-1/3 left-1/3 w-2 h-2 bg-[rgb(0_32_96)] bg-opacity-25 rounded-full animate-ping" style={{animationDuration: '4s', animationDelay: '2s'}}></div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto text-center relative z-10">
 
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-light text-gray-900 mb-6 leading-tight tracking-tight">
-            Professional Dog Services
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight text-center animate-pulse" style={{animationDuration: '3s'}}>
+            Professional Dog Services for{' '}
+            <span className="text-[rgb(0_32_96)] bg-gradient-to-r from-[rgb(0_32_96)] to-[rgb(0_24_96)] bg-clip-text text-transparent animate-bounce" style={{animationDuration: '2s'}}>
+              Every Need
+            </span>
           </h1>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-light text-gray-600 mb-8 leading-relaxed">
-            For every need
-          </h2>
-          <p className="text-lg sm:text-xl text-gray-500 mb-12 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-4xl mx-auto leading-relaxed">
             From pet care to specialized training, we provide comprehensive dog services 
-            with professional management.
+            with professional management. Track progress, manage bookings, and ensure 
+            the best care for every dog in your care.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-10">
             <Button 
               onClick={() => setShowAssessmentBot(true)}
               size="lg" 
-              className="text-lg px-8 py-4 bg-gray-900 hover:bg-gray-800 text-white rounded-full transition-all duration-300 hover:scale-105"
+              className="text-lg px-8 py-4 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 animate-pulse"
+              style={{animationDuration: '2s'}}
             >
-              Get Personalized Recommendations
+              🐕 Get Personalized Recommendations
             </Button>
             <Link href="/register">
               <Button 
                 variant="outline" 
                 size="lg" 
-                className="text-lg px-8 py-4 border-gray-300 text-gray-700 hover:bg-gray-50 rounded-full transition-all duration-300"
+                className="text-lg px-8 py-4 border-2 border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white transition-all duration-300 hover:scale-105 hover:shadow-lg"
               >
-                Start Your Journey
+                Sign Up
               </Button>
             </Link>
           </div>
