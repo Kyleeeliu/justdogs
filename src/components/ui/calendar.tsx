@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 
 interface CalendarEvent {
@@ -18,9 +18,10 @@ interface CalendarProps {
   events: CalendarEvent[];
   onDateClick?: (date: Date) => void;
   onEventClick?: (event: CalendarEvent) => void;
+  onAddEvent?: (date?: Date) => void;
 }
 
-export function Calendar({ events, onDateClick, onEventClick }: CalendarProps) {
+export function Calendar({ events, onDateClick, onEventClick, onAddEvent }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const monthNames = [
@@ -94,6 +95,16 @@ export function Calendar({ events, onDateClick, onEventClick }: CalendarProps) {
           >
             Today
           </Button>
+          {onAddEvent && (
+            <Button
+              size="sm"
+              onClick={() => onAddEvent()}
+              className="text-xs bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+            >
+              <PlusIcon className="h-4 w-4 mr-1" />
+              Add Event
+            </Button>
+          )}
           <div className="flex space-x-1">
             <Button
               variant="outline"
@@ -135,7 +146,7 @@ export function Calendar({ events, onDateClick, onEventClick }: CalendarProps) {
             <div
               key={index}
               className={cn(
-                "min-h-[100px] border-r border-b last:border-r-0 p-1",
+                "min-h-[140px] border-r border-b last:border-r-0 p-2",
                 !isCurrentMonth && "bg-gray-50",
                 isToday && "bg-[rgb(0_32_96)] bg-opacity-5"
               )}
@@ -144,9 +155,10 @@ export function Calendar({ events, onDateClick, onEventClick }: CalendarProps) {
                 <>
                   <div
                     className={cn(
-                      "text-sm font-medium mb-1 cursor-pointer hover:bg-gray-100 rounded p-1",
+                      "text-sm font-medium mb-2 cursor-pointer hover:bg-gray-100 rounded p-1",
                       isToday && "text-[rgb(0_32_96)] font-bold",
-                      !isCurrentMonth && "text-gray-400"
+                      !isCurrentMonth && "text-gray-400",
+                      isCurrentMonth && !isToday && "text-black"
                     )}
                     onClick={() => onDateClick?.(day)}
                   >
@@ -154,12 +166,12 @@ export function Calendar({ events, onDateClick, onEventClick }: CalendarProps) {
                   </div>
                   
                   {/* Events */}
-                  <div className="space-y-1">
-                    {dayEvents.slice(0, 3).map((event) => (
+                  <div className="space-y-1.5">
+                    {dayEvents.slice(0, 4).map((event) => (
                       <div
                         key={event.id}
                         className={cn(
-                          "text-xs p-1 rounded cursor-pointer truncate",
+                          "text-xs p-1.5 rounded cursor-pointer truncate",
                           event.color,
                           "hover:opacity-80"
                         )}
@@ -169,9 +181,9 @@ export function Calendar({ events, onDateClick, onEventClick }: CalendarProps) {
                         {event.time} {event.title}
                       </div>
                     ))}
-                    {dayEvents.length > 3 && (
+                    {dayEvents.length > 4 && (
                       <div className="text-xs text-gray-500 p-1">
-                        +{dayEvents.length - 3} more
+                        +{dayEvents.length - 4} more
                       </div>
                     )}
                   </div>

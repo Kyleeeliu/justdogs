@@ -7,7 +7,6 @@ import {
   CalendarIcon, 
   UserGroupIcon, 
   DocumentTextIcon,
-  PlusIcon,
   ClockIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon
@@ -74,45 +73,6 @@ export default function DashboardPage() {
     loadDashboard();
   }, []);
 
-  const handleQuickAction = (action: string) => {
-    switch (action) {
-      case 'add_dog':
-        router.push('/dogs');
-        break;
-      case 'manage_trainers':
-        router.push('/dogs'); // For now, redirect to dogs page since we don't have a trainers page
-        break;
-      case 'view_bookings':
-        router.push('/bookings');
-        break;
-      case 'view_reports':
-        router.push('/sessions'); // For now, redirect to sessions page since we don't have a reports page
-        break;
-      case 'book_session':
-        router.push('/bookings');
-        break;
-      case 'view_progress':
-        router.push('/sessions');
-        break;
-      case 'contact_trainer':
-        router.push('/messages');
-        break;
-      case 'view_history':
-        router.push('/sessions');
-        break;
-      case 'record_feedback':
-        router.push('/sessions');
-        break;
-      case 'update_availability':
-        router.push('/profile'); // For now, redirect to profile page
-        break;
-      case 'view_profiles':
-        router.push('/dogs');
-        break;
-      default:
-        break;
-    }
-  };
 
   if (loading) {
     return (
@@ -185,45 +145,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Common administrative tasks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('add_dog')}
-              >
-                <PlusIcon className="h-4 w-4 mr-2" />
-                Add New Dog
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('manage_trainers')}
-              >
-                <UserGroupIcon className="h-4 w-4 mr-2" />
-                Manage Trainers
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('view_bookings')}
-              >
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                View All Bookings
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('view_reports')}
-              >
-                <DocumentTextIcon className="h-4 w-4 mr-2" />
-                View Reports
-              </Button>
-            </CardContent>
-          </Card>
 
           <Card>
             <CardHeader>
@@ -330,37 +251,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Common trainer tasks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('record_feedback')}
-              >
-                <DocumentTextIcon className="h-4 w-4 mr-2" />
-                Record Session Feedback
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('update_availability')}
-              >
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                Update Availability
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('view_profiles')}
-              >
-                <DocumentTextIcon className="h-4 w-4 mr-2" />
-                View Dog Profiles
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       </div>
     );
@@ -437,45 +327,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Common parent tasks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('book_session')}
-              >
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                Book New Session
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('view_progress')}
-              >
-                <DocumentTextIcon className="h-4 w-4 mr-2" />
-                View Training Progress
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('contact_trainer')}
-              >
-                <DocumentTextIcon className="h-4 w-4 mr-2" />
-                Contact Trainer
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-start"
-                onClick={() => handleQuickAction('view_history')}
-              >
-                <DocumentTextIcon className="h-4 w-4 mr-2" />
-                View Session History
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       </div>
     );

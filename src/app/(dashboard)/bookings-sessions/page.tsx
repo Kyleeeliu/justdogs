@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
+import { AddEventModal, EventFormData } from '@/components/AddEventModal';
+import { EventDetailsModal } from '@/components/EventDetailsModal';
 import { 
   CalendarIcon, 
   ClockIcon, 
@@ -186,6 +188,18 @@ export default function BookingsSessionsPage() {
   const [filter, setFilter] = useState<BookingStatus | SessionStatus | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showAddEventModal, setShowAddEventModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [showEventDetailsModal, setShowEventDetailsModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<{
+    id: string;
+    title: string;
+    date: Date;
+    type: 'booking' | 'session';
+    status: string;
+    time: string;
+    color: string;
+  } | null>(null);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -333,13 +347,135 @@ export default function BookingsSessionsPage() {
   const handleDateClick = (date: Date) => {
     // Filter to show only events for the selected date
     const dateString = date.toDateString();
-    // You could implement date-specific filtering here
+    // Open add event modal with the selected date
+    setSelectedDate(date);
+    setShowAddEventModal(true);
     console.log('Date clicked:', dateString);
   };
 
   const handleEventClick = (clickedEvent: { id: string; title: string; date: Date; type: 'booking' | 'session'; status: string; time: string; color: string }) => {
-    // Handle event click - could open a modal or navigate to details
+    // Handle event click - open event details modal
+    setSelectedEvent(clickedEvent);
+    setShowEventDetailsModal(true);
     console.log('Event clicked:', clickedEvent);
+  };
+
+  const handleAddEvent = (date?: Date) => {
+    setSelectedDate(date);
+    setShowAddEventModal(true);
+  };
+
+  const handleSaveEvent = (eventData: EventFormData) => {
+    if (eventData.type === 'booking') {
+      // Create new booking
+      const newBooking: Booking = {
+        id: `booking-${Date.now()}`,
+        dog_id: eventData.dog_id,
+        trainer_id: eventData.trainer_id,
+        parent_id: '1', // This should come from the current user
+        booking_type: eventData.booking_type!,
+        training_level: eventData.training_level,
+        consult_type: eventData.consult_type,
+        status: 'pending',
+        start_time: eventData.start_time,
+        end_time: eventData.end_time,
+        special_instructions: eventData.special_instructions,
+        location: eventData.location,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setBookings(prev => [...prev, newBooking]);
+    } else {
+      // Create new session
+      const newSession: Session = {
+        id: `session-${Date.now()}`,
+        booking_id: '', // This would need to be linked to a booking
+        trainer_id: eventData.trainer_id,
+        parent_id: '1', // This should come from the current user
+        dog_id: eventData.dog_id,
+        status: 'scheduled',
+        start_time: eventData.start_time,
+        end_time: eventData.end_time,
+        notes: eventData.notes || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setSessions(prev => [...prev, newSession]);
+    }
+    setShowAddEventModal(false);
+    setSelectedDate(undefined);
+  };
+
+  // Mock data for dogs and trainers
+  const mockDogs = [
+    { id: '1', name: 'Max' },
+    { id: '2', name: 'Bella' },
+    { id: '3', name: 'Charlie' },
+    { id: '4', name: 'Luna' },
+    { id: '5', name: 'Rocky' }
+  ];
+
+  const mockTrainers = [
+    { id: '1', name: 'Sarah Johnson' },
+    { id: '2', name: 'Mike Chen' },
+    { id: '3', name: 'Emma Wilson' },
+    { id: '4', name: 'David Brown' }
+  ];
+
+  const handleEditEvent = (event: any) => {
+    // Close the details modal and open the add event modal in edit mode
+    setShowEventDetailsModal(false);
+    // For now, we'll just open the add event modal
+    // In a real app, you'd populate the form with existing data
+    setShowAddEventModal(true);
+  };
+
+  const handleDeleteEvent = (eventId: string, type: 'booking' | 'session') => {
+    // Extract the actual ID from the prefixed event ID
+    const actualId = eventId.replace(`${type}-`, '');
+    
+    if (type === 'booking') {
+      setBookings(prev => prev.filter(booking => booking.id !== actualId));
+    } else {
+      setSessions(prev => prev.filter(session => session.id !== actualId));
+    }
+    setShowEventDetailsModal(false);
+    setSelectedEvent(null);
+  };
+
+  const handleStatusChange = (eventId: string, type: 'booking' | 'session', newStatus: string) => {
+    // Extract the actual ID from the prefixed event ID
+    const actualId = eventId.replace(`${type}-`, '');
+    
+    if (type === 'booking') {
+      setBookings(prev => prev.map(booking => 
+        booking.id === actualId 
+          ? { ...booking, status: newStatus as BookingStatus, updated_at: new Date().toISOString() }
+          : booking
+      ));
+    } else {
+      setSessions(prev => prev.map(session => 
+        session.id === actualId 
+          ? { ...session, status: newStatus as SessionStatus, updated_at: new Date().toISOString() }
+          : session
+      ));
+    }
+  };
+
+  // Helper function to get the full booking or session data for the selected event
+  const getEventData = () => {
+    if (!selectedEvent) return { booking: undefined, session: undefined };
+    
+    // Extract the actual ID from the prefixed event ID
+    const actualId = selectedEvent.id.replace(`${selectedEvent.type}-`, '');
+    
+    if (selectedEvent.type === 'booking') {
+      const booking = bookings.find(b => b.id === actualId);
+      return { booking, session: undefined };
+    } else {
+      const session = sessions.find(s => s.id === actualId);
+      return { booking: undefined, session };
+    }
   };
 
   if (loading) {
@@ -489,6 +625,7 @@ export default function BookingsSessionsPage() {
             events={getCalendarEvents()}
             onDateClick={handleDateClick}
             onEventClick={handleEventClick}
+            onAddEvent={handleAddEvent}
           />
           
           {/* Legend */}
@@ -547,7 +684,26 @@ export default function BookingsSessionsPage() {
       ) : activeTab === 'bookings' ? (
         <div className="space-y-4">
           {filteredBookings.map((booking) => (
-            <Card key={booking.id} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={booking.id} 
+              className="hover:shadow-md hover:border-[rgb(0_32_96)] transition-all cursor-pointer"
+              onClick={() => {
+                const event = {
+                  id: booking.id,
+                  title: `${getDogName(booking.dog_id)} - ${booking.booking_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}`,
+                  date: new Date(booking.start_time),
+                  type: 'booking' as const,
+                  status: booking.status,
+                  time: new Date(booking.start_time).toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  }),
+                  color: getBookingEventColor(booking.status)
+                };
+                setSelectedEvent(event);
+                setShowEventDetailsModal(true);
+              }}
+            >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -618,7 +774,26 @@ export default function BookingsSessionsPage() {
       ) : (
         <div className="space-y-4">
           {filteredSessions.map((session) => (
-            <Card key={session.id} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={session.id} 
+              className="hover:shadow-md hover:border-[rgb(0_32_96)] transition-all cursor-pointer"
+              onClick={() => {
+                const event = {
+                  id: session.id,
+                  title: `${getDogName(session.dog_id)} - Session`,
+                  date: new Date(session.start_time),
+                  type: 'session' as const,
+                  status: session.status,
+                  time: new Date(session.start_time).toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  }),
+                  color: getSessionEventColor(session.status)
+                };
+                setSelectedEvent(event);
+                setShowEventDetailsModal(true);
+              }}
+            >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -702,6 +877,30 @@ export default function BookingsSessionsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Add Event Modal */}
+      <AddEventModal
+        isOpen={showAddEventModal}
+        onClose={() => setShowAddEventModal(false)}
+        onSave={handleSaveEvent}
+        selectedDate={selectedDate}
+        dogs={mockDogs}
+        trainers={mockTrainers}
+      />
+
+      {/* Event Details Modal */}
+      <EventDetailsModal
+        isOpen={showEventDetailsModal}
+        onClose={() => {
+          setShowEventDetailsModal(false);
+          setSelectedEvent(null);
+        }}
+        event={selectedEvent}
+        {...getEventData()}
+        onEdit={handleEditEvent}
+        onDelete={handleDeleteEvent}
+        onStatusChange={handleStatusChange}
+      />
     </div>
   );
 }

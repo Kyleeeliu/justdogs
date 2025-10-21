@@ -139,6 +139,42 @@ html {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Scroll animation keyframes */
+@keyframes scrollBounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes scrollIndicator {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(8px);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-scroll-bounce {
+  animation: scrollBounce 2s infinite;
+}
+
+.animate-scroll-indicator {
+  animation: scrollIndicator 2s infinite;
+}
+
 /* Mobile-first responsive design */
 @media (max-width: 640px) {
   .container {
