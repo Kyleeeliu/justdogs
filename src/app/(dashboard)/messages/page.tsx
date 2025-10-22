@@ -198,24 +198,20 @@ export default function MessagesPage() {
       let recipients: User[] = [];
       
       if (currentUser.role === 'admin') {
-        // Admins can only message parent accounts
-        recipients = allUsers.filter(user =>
-          user.id !== currentUser.id && user.role === 'parent'
-        );
+        // Admins can message everyone except themselves
+        recipients = allUsers.filter(user => user.id !== currentUser.id);
       } else if (currentUser.role === 'trainer') {
-        // Trainers can message parents and behaviorists
+        // Trainers can message parents, behaviorists, and admins
         recipients = allUsers.filter(user =>
-          user.id !== currentUser.id && (user.role === 'parent' || user.role === 'behaviorist')
+          user.id !== currentUser.id && (user.role === 'parent' || user.role === 'behaviorist' || user.role === 'admin')
         );
       } else if (currentUser.role === 'parent') {
-        // Parents can message trainers and behaviorists
-        recipients = allUsers.filter(user =>
-          user.id !== currentUser.id && (user.role === 'trainer' || user.role === 'behaviorist')
-        );
+        // Parents can message everyone (trainers, behaviorists, admins, other parents)
+        recipients = allUsers.filter(user => user.id !== currentUser.id);
       } else if (currentUser.role === 'behaviorist') {
-        // Behaviorists can message parents and trainers
+        // Behaviorists can message parents, trainers, and admins
         recipients = allUsers.filter(user =>
-          user.id !== currentUser.id && (user.role === 'parent' || user.role === 'trainer')
+          user.id !== currentUser.id && (user.role === 'parent' || user.role === 'trainer' || user.role === 'admin')
         );
       }
       

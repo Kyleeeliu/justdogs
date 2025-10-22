@@ -3,21 +3,26 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  CalendarIcon, 
-  UserGroupIcon, 
+import {
+  CalendarIcon,
+  UserGroupIcon,
   DocumentTextIcon,
   ClockIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  SpeakerWaveIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 import { getCurrentUser } from '@/lib/auth/auth';
-import { User, DashboardStats, TrainerStats, ParentStats } from '@/types';
+import { User, DashboardStats, TrainerStats, ParentStats, Message } from '@/types';
 import { useRouter } from 'next/navigation';
+import { getMessagesByUser } from '@/lib/supabase/messages';
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [stats, setStats] = useState<DashboardStats | TrainerStats | ParentStats | null>(null);
+  const [announcements, setAnnouncements] = useState<Message[]>([]);
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -27,7 +32,25 @@ export default function DashboardPage() {
         const currentUser = await getCurrentUser();
         setUser(currentUser);
         
-        // Mock data - in real app, this would come from API
+        if (currentUser) {
+          // Load announcements for all users
+          try {
+            const messages = await getMessagesByUser(currentUser.id);
+            const activeAnnouncements = messages.filter(msg => msg.is_announcement);
+            setAnnouncements(activeAnnouncements);
+          } catch (error) {
+            console.error('Error loading announcements:', error);
+          }
+
+          // Load dismissed announcements from localStorage
+          const dismissed = localStorage.getItem(`dismissed_announcements_${currentUser.id}`);
+          if (dismissed) {
+            setDismissedAnnouncements(JSON.parse(dismissed));
+          }
+        }
+        
+        // For new dog parents, show 0 stats initially
+        // For existing users, show mock data (in real app, this would come from API)
         if (currentUser?.role === 'admin') {
           setStats({
             total_bookings_today: 12,
@@ -57,10 +80,11 @@ export default function DashboardPage() {
             ],
           });
         } else if (currentUser?.role === 'parent') {
+          // For new dog parents, show 0 stats
           setStats({
-            total_dogs: 2,
-            upcoming_sessions: 3,
-            unread_messages: 1,
+            total_dogs: 0,
+            upcoming_sessions: 0,
+            unread_messages: 0,
           });
         }
       } catch (error) {
@@ -72,6 +96,18 @@ export default function DashboardPage() {
 
     loadDashboard();
   }, []);
+
+  const dismissAnnouncement = (announcementId: string) => {
+    const newDismissed = [...dismissedAnnouncements, announcementId];
+    setDismissedAnnouncements(newDismissed);
+    if (user) {
+      localStorage.setItem(`dismissed_announcements_${user.id}`, JSON.stringify(newDismissed));
+    }
+  };
+
+  const visibleAnnouncements = announcements.filter(
+    announcement => !dismissedAnnouncements.includes(announcement.id)
+  );
 
 
   if (loading) {
@@ -340,6 +376,47 @@ export default function DashboardPage() {
           Welcome back! Here&apos;s what&apos;s happening with your {user.role} account.
         </p>
       </div>
+
+      {/* Announcements Section */}
+      {visibleAnnouncements.length > 0 && (
+        <div className="space-y-4">
+          {visibleAnnouncements.map((announcement) => (
+            <Card key={announcement.id} className="border-l-4 border-l-purple-500 bg-gradient-to-r from-purple-50 to-transparent">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-purple-100 rounded-lg">
+                      <SpeakerWaveIcon className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg font-semibold text-purple-900">
+                        📢 {announcement.subject}
+                      </CardTitle>
+                      <p className="text-sm text-purple-700 mt-1">
+                        Posted {new Date(announcement.created_at).toLocaleDateString()} at{' '}
+                        {new Date(announcement.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => dismissAnnouncement(announcement.id)}
+                    className="text-purple-600 hover:text-purple-800 hover:bg-purple-100"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {announcement.content}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {user.role === 'admin' && renderAdminDashboard()}
       {user.role === 'trainer' && renderTrainerDashboard()}
