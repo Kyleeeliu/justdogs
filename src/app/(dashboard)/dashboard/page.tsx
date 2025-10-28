@@ -181,7 +181,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
           <Card>
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
@@ -211,6 +210,50 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
+
+          {user?.role === 'admin' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Content Management</CardTitle>
+                <CardDescription>Manage website content and information</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <Button 
+                    onClick={() => router.push('/admin/content-management')}
+                    className="w-full justify-start bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+                  >
+                    <DocumentTextIcon className="h-4 w-4 mr-2" />
+                    Manage News & Events
+                  </Button>
+                  <Button 
+                    onClick={() => router.push('/admin/content-management')}
+                    variant="outline" 
+                    className="w-full justify-start"
+                  >
+                    <UserGroupIcon className="h-4 w-4 mr-2" />
+                    Manage Services
+                  </Button>
+                  <Button 
+                    onClick={() => router.push('/admin/content-management')}
+                    variant="outline" 
+                    className="w-full justify-start"
+                  >
+                    <SpeakerWaveIcon className="h-4 w-4 mr-2" />
+                    Manage Team
+                  </Button>
+                  <Button 
+                    onClick={() => router.push('/admin/content-management')}
+                    variant="outline" 
+                    className="w-full justify-start"
+                  >
+                    <DocumentTextIcon className="h-4 w-4 mr-2" />
+                    Manage Gallery
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     );

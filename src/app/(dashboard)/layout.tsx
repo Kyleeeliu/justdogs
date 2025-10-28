@@ -38,23 +38,52 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
 
+  // Check for existing user session on component mount
+  useEffect(() => {
+    const checkExistingSession = () => {
+      try {
+        const mockUserStr = localStorage.getItem('mockUser');
+        if (mockUserStr) {
+          const existingUser = JSON.parse(mockUserStr);
+          if (existingUser.id && existingUser.email && existingUser.full_name && existingUser.role) {
+            console.log('Found existing user session:', existingUser.full_name);
+            setUser(existingUser);
+            setAuthChecked(true);
+            setLoading(false);
+            return true;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking existing session:', error);
+      }
+      return false;
+    };
+
+    // Only check if we haven't already checked auth
+    if (!authChecked) {
+      const hasExistingSession = checkExistingSession();
+      if (!hasExistingSession) {
+        // No existing session, proceed with normal auth check
+        setLoading(true);
+      }
+    }
+  }, [authChecked]);
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
         console.log('Dashboard layout: Checking authentication...');
         
         // Add a small delay to ensure localStorage is available and properly set
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         const currentUser = await getCurrentUser();
         console.log('Dashboard layout: Current user result:', currentUser);
         
         if (!currentUser) {
           console.log('Dashboard layout: No user found, redirecting to login');
-          if (!authChecked) {
-            setAuthChecked(true);
-            router.push('/login');
-          }
+          setAuthChecked(true);
+          router.push('/login');
           return;
         }
         
@@ -63,17 +92,18 @@ export default function DashboardLayout({
         setAuthChecked(true);
       } catch (error) {
         console.error('Dashboard layout: Auth check error:', error);
-        if (!authChecked) {
-          setAuthChecked(true);
-          router.push('/login');
-        }
+        setAuthChecked(true);
+        router.push('/login');
       } finally {
         setLoading(false);
       }
     };
 
-    console.log('Dashboard layout: Starting auth check...');
-    checkAuth();
+    // Only run auth check once on mount
+    if (!authChecked) {
+      console.log('Dashboard layout: Starting auth check...');
+      checkAuth();
+    }
   }, [router, authChecked]);
 
   const handleSignOut = async () => {
@@ -246,11 +276,34 @@ export default function DashboardLayout({
         </div>
 
         {/* Page content */}
-        <main className="py-4 sm:py-6">
+        <main className="py-4 sm:py-6 pb-20 lg:pb-4">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {children}
           </div>
         </main>
+
+        {/* Mobile bottom navigation */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 lg:hidden">
+          <nav className="flex justify-around">
+            {navigation.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex flex-col items-center py-2 px-3 text-xs font-medium transition-colors ${
+                    isActive
+                      ? 'text-[rgb(0_32_96)]'
+                      : 'text-gray-500 hover:text-[rgb(0_32_96)]'
+                  }`}
+                >
+                  <item.icon className="h-6 w-6 mb-1" />
+                  <span className="truncate max-w-[60px]">{item.name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </div>
     </div>
   );

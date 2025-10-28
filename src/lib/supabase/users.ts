@@ -2,6 +2,9 @@ import { supabase } from './client';
 import { User } from '@/types';
 import * as localUsers from '../database/users';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+
 // Check if Supabase is properly configured
 const isSupabaseConfigured = () => {
   return process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -37,24 +40,43 @@ export const createUser = async (userData: Omit<User, 'id' | 'created_at' | 'upd
 
 export const getAllUsers = async (): Promise<User[]> => {
   if (!isSupabaseConfigured()) {
-    console.log('Using local database for user retrieval');
+    console.log('Using local database for user retrieval (Supabase not configured)');
+    return localUsers.getAllUsers();
+  }
+
+  // Check if we're in mock mode by testing the supabase client
+  const isMockMode = supabaseUrl === 'https://placeholder.supabase.co' || supabaseAnonKey === 'placeholder-key';
+  if (isMockMode) {
+    console.log('Using local database for user retrieval (Mock mode)');
     return localUsers.getAllUsers();
   }
 
   try {
+    console.log('Attempting to fetch users from Supabase...');
     const { data, error } = await supabase
       .from(USERS_TABLE)
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching users from Supabase:', error);
+      console.error('Error fetching users from Supabase:', {
+        message: error.message || 'No message',
+        code: error.code || 'No code',
+        details: error.details || 'No details',
+        hint: error.hint || 'No hint',
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      });
       throw error;
     }
 
+    console.log('Successfully fetched users from Supabase:', data?.length || 0, 'users');
     return data || [];
   } catch (error) {
-    console.error('Supabase user retrieval failed, falling back to local database:', error);
+    console.error('Supabase user retrieval failed, falling back to local database:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
     return localUsers.getAllUsers();
   }
 };

@@ -124,8 +124,22 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <LoginForm />
-    </Suspense>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center px-6">
+      {/* Just Dogs Logo */}
+      <div className="mb-8">
+        <img 
+          src="/images/icons/logo.png" 
+          alt="Just Dogs Logo" 
+          className="w-20 h-20 mx-auto mb-4"
+        />
+        <h1 className="text-3xl font-bold text-[rgb(0_32_96)] text-center">
+          Just Dogs
+        </h1>
+      </div>
+
+      <Suspense fallback={<div>Loading...</div>}>
+        <LoginForm />
+      </Suspense>
+    </div>
   );
 }

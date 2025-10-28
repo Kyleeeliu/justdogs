@@ -38,6 +38,16 @@ const createMockSupabaseClient = () => {
             throw new Error('Database error querying schema');
           },
         }),
+        order: () => ({
+          then: async (resolve: any) => {
+            // For getAllUsers, return empty array instead of throwing error
+            resolve({ data: [], error: null });
+          }
+        }),
+        then: async (resolve: any) => {
+          // For other select operations, return empty array
+          resolve({ data: [], error: null });
+        }
       }),
       insert: () => ({
         select: async () => {

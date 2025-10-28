@@ -269,9 +269,33 @@ export async function getCurrentUser(): Promise<User | null> {
   console.log('getCurrentUser called');
   
   if (!isSupabaseConfigured()) {
-    // Get mock user from localStorage
-    const mockUserStr = localStorage.getItem('mockUser');
-    console.log('Mock user from localStorage:', mockUserStr);
+    // Get mock user from localStorage with retry logic
+    let mockUserStr = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts && !mockUserStr) {
+      try {
+        mockUserStr = localStorage.getItem('mockUser');
+        console.log(`Mock user from localStorage (attempt ${attempts + 1}):`, mockUserStr);
+        
+        if (mockUserStr) {
+          break;
+        }
+        
+        // If no user found, wait a bit and try again (for timing issues)
+        if (attempts < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        attempts++;
+      } catch (error) {
+        console.error(`Error accessing localStorage (attempt ${attempts + 1}):`, error);
+        attempts++;
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+    }
     
     if (mockUserStr) {
       try {
@@ -294,7 +318,7 @@ export async function getCurrentUser(): Promise<User | null> {
       }
     }
     
-    console.log('No mock user found');
+    console.log('No mock user found after', maxAttempts, 'attempts');
     return null;
   }
 

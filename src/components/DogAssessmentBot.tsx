@@ -71,7 +71,7 @@ const questions: Question[] = [
     category: 'basic'
   },
   
-  // Behavior Assessment
+  // Energy Level
   {
     id: 'energyLevel',
     question: "How would you describe your dog's energy level?",
@@ -80,26 +80,8 @@ const questions: Question[] = [
     required: true,
     category: 'behavior'
   },
-  {
-    id: 'behaviorIssues',
-    question: "What behavioral issues does your dog have? (Select all that apply)",
-    type: 'checkbox',
-    options: [
-      'Separation anxiety',
-      'Aggression towards people',
-      'Aggression towards other dogs',
-      'Excessive barking',
-      'Destructive behavior',
-      'House training issues',
-      'Pulling on leash',
-      'Jumping on people',
-      'Fear/anxiety',
-      'Resource guarding',
-      'None of the above'
-    ],
-    required: false,
-    category: 'behavior'
-  },
+  
+  // Socialization
   {
     id: 'socialization',
     question: "How does your dog interact with other dogs?",
@@ -164,6 +146,28 @@ const questions: Question[] = [
       'General well-being'
     ],
     required: true,
+    category: 'behavior'
+  },
+  
+  // Behavior Issues (moved to end as requested)
+  {
+    id: 'behaviorIssues',
+    question: "What behavioral issues does your dog have? (Select all that apply)",
+    type: 'checkbox',
+    options: [
+      'Separation anxiety',
+      'Aggression towards people',
+      'Aggression towards other dogs',
+      'Excessive barking',
+      'Destructive behavior',
+      'House training issues',
+      'Pulling on leash',
+      'Jumping on people',
+      'Fear/anxiety',
+      'Resource guarding',
+      'None or Nothing to complain about'
+    ],
+    required: false,
     category: 'behavior'
   }
 ];
@@ -348,8 +352,8 @@ export default function DogAssessmentBot({ isOpen, onClose, onComplete }: DogAss
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center p-2 sm:p-4 z-50">
+      <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-xl max-w-2xl w-full max-h-[98vh] sm:max-h-[95vh] overflow-y-auto border-0">
         <div className="flex items-center justify-between p-4 sm:p-6 border-b">
           <div className="flex items-center space-x-2 sm:space-x-3">
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
