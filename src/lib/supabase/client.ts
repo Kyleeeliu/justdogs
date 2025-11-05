@@ -4,7 +4,16 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
 // Check if we're in development and environment variables are missing
-const isMockMode = supabaseUrl === 'https://placeholder.supabase.co' || supabaseAnonKey === 'placeholder-key';
+const isMockMode = supabaseUrl === 'https://placeholder.supabase.co' ||
+                   supabaseAnonKey === 'placeholder-key' ||
+                   !supabaseUrl ||
+                   !supabaseAnonKey;
+
+console.log('Supabase configuration:', {
+  url: supabaseUrl ? supabaseUrl.substring(0, 20) + '...' : 'missing',
+  key: supabaseAnonKey ? supabaseAnonKey.substring(0, 20) + '...' : 'missing',
+  isMockMode
+});
 
 if (process.env.NODE_ENV === 'development' && isMockMode) {
   console.warn('⚠️ Supabase environment variables are not set. Please create a .env.local file with your Supabase credentials.');

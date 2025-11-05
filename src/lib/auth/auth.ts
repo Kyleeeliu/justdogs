@@ -63,7 +63,7 @@ const isSupabaseConfigured = () => {
   
   // Temporarily force mock mode for testing
   // Change this to true when you want to use real Supabase Auth
-  const FORCE_MOCK_MODE = true;
+  const FORCE_MOCK_MODE = false;
   
   if (FORCE_MOCK_MODE) {
     console.log('🔧 Using mock authentication mode for testing');

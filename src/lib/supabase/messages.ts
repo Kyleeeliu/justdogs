@@ -125,7 +125,9 @@ export const getMessagesByUser = async (userId: string): Promise<Message[]> => {
       .single();
 
     if (userError) {
-      console.error('Error fetching user role:', userError);
+      console.log('User not found in Supabase users table, falling back to local database');
+      const userMessages = localMessages.getMessagesByUser(userId);
+      return filterAnnouncementsByRetention(userMessages);
     }
 
     const userRole = userData?.role;
