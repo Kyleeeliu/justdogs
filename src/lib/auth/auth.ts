@@ -322,17 +322,33 @@ export async function getCurrentUser(): Promise<User | null> {
     return null;
   }
 
-  // Real Supabase authentication
+  // Real Supabase authentication with session persistence
   console.log('Using Supabase authentication');
   
   try {
+    // First check if we have a valid session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('Error getting session:', sessionError);
+      return null;
+    }
+    
+    if (!session) {
+      console.log('No active session found');
+      return null;
+    }
+    
+    console.log('Found active session for user:', session.user.email);
+    
+    // Get user profile from our users table
     const user = await getCurrentSupabaseUser();
     if (user) {
       console.log('Found Supabase user:', user.email);
       return user;
     }
     
-    console.log('No Supabase user found');
+    console.log('No Supabase user profile found');
     return null;
     
   } catch (error) {

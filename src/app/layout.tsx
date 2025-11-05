@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
   title: "Just Dogs Training App",
@@ -30,9 +31,11 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
       <body className="min-h-screen bg-gray-50 text-base leading-relaxed">
-        <div className="flex min-h-screen flex-col">
-          {children}
-        </div>
+        <AuthProvider>
+          <div className="flex min-h-screen flex-col">
+            {children}
+          </div>
+        </AuthProvider>
       </body>
     </html>
   );
