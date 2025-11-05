@@ -1,0 +1,136 @@
+Supabase Integration — Step-by-step instructions and explanations
+----------------------------------------------------------------
+
+Overview
+- Goal: Stop using in-memory news items and persist news to Supabase (news_items table). Provide CRUD API and update admin UI to use it.
+- Outcome: Admin Add/Edit/Delete operations persist to Supabase and the admin feed reads live data.
+
+Prerequisites
+1. Supabase project created.
+2. Project URL and keys copied (anon key and service role key).
+3. Local Next.js project in: c:\Users\uzuma\OneDrive\Documents\Francis\Web projects\justdogs-main\justdogs-main
+
+Steps
+
+1) Create news_items table (Supabase SQL)
+- Open Supabase → SQL Editor → New Query.
+- Run:
+
+  CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+  CREATE TABLE IF NOT EXISTS public.news_items (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL,
+    content text NOT NULL,
+    date date,
+    type text NOT NULL CHECK (type IN ('news','event','announcement')),
+    published boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+
+- Explanation: uuid id, created_at with default now(). created_at used for ordering.
+
+2) Add environment variables locally
+- Edit .env.local at project root and add:
+  NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+  SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+- Explanation: Public URL/anon key are safe for client reads. Service role key is server-only and should never be exposed to client bundles.
+
+3) Install Supabase client
+- In project root run (PowerShell):
+  npm install @supabase/supabase-js
+
+4) Create a small Supabase wrapper (browser + server)
+- File: src/lib/supabase.ts
+- Content (exact or equivalent):
+
+  import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  export const supabase = createClient(url, anonKey);
+
+  export function createServiceRoleClient(): SupabaseClient {
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY in environment');
+    return createClient(url, serviceKey, { auth: { persistSession: false } });
+  }
+
+- Explanation: Use supabase for client reads; createServiceRoleClient() for server actions (writes).
+
+5) Add API route for news (CRUD)
+- File: src/app/api/news/route.ts
+- Implement handlers: GET, POST, PATCH, DELETE. Key points:
+  - GET: select * from news_items, order by created_at desc.
+  - POST: insert new row and return inserted row (.select().single()).
+  - PATCH: update by id and return updated row.
+  - DELETE: accept id via query param, delete row and return deleted row or success.
+
+- Important: Use createServiceRoleClient() inside server route handlers so the service role key is used server-side only.
+
+- Example error handling: wrap each handler in try/catch and log server-side errors to terminal; return JSON with status codes.
+
+6) Update admin UI to call the API (client-side)
+- File: src/app/(dashboard)/admin/content-management/page.tsx
+- Key changes:
+  A) Replace in-memory loading with fetch('/api/news'):
+    - Use useEffect to fetch GET /api/news (cache: 'no-store' for fresh reads in admin).
+    - Normalize returned rows to the existing NewsItem shape (id string, ISO date or yyyy-mm-dd).
+  B) Replace addNewsItem usage with POST /api/news:
+    - When creating, POST payload fields (title, content, date, type, published).
+    - Parse response JSON once and update local state.
+    - Avoid calling res.json() more than once (causes "body stream already read").
+  C) Implement edit/save logic:
+    - When saving and item has id, use PATCH to /api/news and include id in body.
+    - Update local state: replace the updated item in the list.
+  D) Implement delete:
+    - Call DELETE /api/news?id=<id>, then remove it from local state.
+
+- Critical snippets:
+  - Fetch list:
+    const res = await fetch('/api/news', { cache: 'no-store' });
+    const data = await res.json();
+  - Create/Update:
+    const res = await fetch('/api/news', { method: 'POST'|'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const body = await res.json(); // parse once
+  - Delete:
+    const res = await fetch(`/api/news?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+7) Content Form: include id on edit
+- Ensure the ContentForm onSubmit passes id for edits:
+  onSave({ ...formData, id: item?.id });
+
+- Explanation: The presence of id tells handleSave to PATCH rather than POST.
+
+8) Troubleshooting common errors
+- "column created_at does not exist":
+  - Fix: add created_at column (see step 1) or change API sorting to order by 'date' or 'id'.
+- "body stream already read":
+  - Cause: calling res.json() multiple times on same Response. Fix: call res.json() only once and reuse parsed object.
+- API 500 errors: check Next.js dev server terminal for stack traces and Supabase errors, validate env keys, and check table schema.
+- Restart dev server when changing .env.local or adding new app routes.
+
+9) Testing flow
+- Start dev server:
+  npm run dev
+- In admin:
+  - Create a news item => verify the API returns 201 and Supabase table contains row.
+  - Edit the item => verify PATCH updates row in Supabase and UI.
+  - Delete the item => verify row removed from Supabase and UI.
+- Verify logs: terminal will show server-side errors printed by the API route catch blocks.
+
+10) Next improvements
+- Add authentication enforcement on API routes (validate auth and check role before allowing write operations).
+- Add input validation and sanitization on the server side.
+- Add pagination/filtering for large datasets.
+- Add edit/delete confirmations and optimistic UI updates (optional).
+- Implement server actions (Next.js) if you prefer server-side functions callable from components.
+
+Security Notes
+- Never expose SUPABASE_SERVICE_ROLE_KEY to client code or commit it to source control.
+- Use service role key only in server code (API routes, server actions).
+- For client-authenticated actions, prefer Supabase Auth or NextAuth and use anon key with RLS policies.
+
+End of file

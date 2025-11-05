@@ -99,10 +99,32 @@ export default function ContentManagementPage() {
   // Load data from data store
   useEffect(() => {
     if (user?.role !== 'admin') return;
-    
-    const loadData = () => {
+    const loadData = async () => {
       try {
-        setNewsItems(getAllNewsItems());
+        // Fetch news from API (DB-backed)
+        const res = await fetch('/api/news', { cache: 'no-store' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Unknown' }));
+          console.error('Failed to fetch news:', err);
+          setNewsItems([]);
+        } else {
+          const data = await res.json();
+          // normalize rows to the UI's NewsItem shape
+          setNewsItems(
+            Array.isArray(data)
+              ? data.map((n: any) => ({
+                  id: String(n.id),
+                  title: n.title ?? '',
+                  content: n.content ?? '',
+                  date: n.date ? (typeof n.date === 'string' ? n.date : new Date(n.date).toISOString().split('T')[0]) : '',
+                  type: n.type ?? 'news',
+                  published: !!n.published
+                }))
+              : []
+          );
+        }
+
+        // keep services/team using existing in-memory helpers for now
         setServices(getAllServices());
         setTeamMembers(getAllTeamMembers());
       } catch (error) {
@@ -153,15 +175,22 @@ export default function ContentManagementPage() {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string, type: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
-      try {
+<<<<<<< HEAD
+  const handleDelete = async (id: string, type: string) => {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    try {
+      if (type === 'news') {
+        const res = await fetch(`/api/news?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const body = await res.json();
+        if (!res.ok) {
+          console.error('Failed to delete news item:', body);
+          return;
+        }
+        setNewsItems((prev) => prev.filter((i) => i.id !== id));
+      } else {
+        // keep existing in-memory behavior for services/team
         let success = false;
         switch (type) {
-          case 'news':
-            success = deleteNewsItem(id);
-            if (success) setNewsItems(getAllNewsItems());
-            break;
           case 'services':
             success = deleteService(id);
             if (success) setServices(getAllServices());
@@ -171,62 +200,49 @@ export default function ContentManagementPage() {
             if (success) setTeamMembers(getAllTeamMembers());
             break;
         }
-        
-        if (!success) {
-          console.error('Failed to delete item');
-        }
-      } catch (error) {
-        console.error('Error deleting item:', error);
+        if (!success) console.error('Failed to delete item');
       }
+    } catch (error) {
+      console.error('Error deleting item:', error);
     }
   };
 
-  const handleSave = (formData: any) => {
-    const { type, ...data } = formData;
-    
+  async function handleSave(newItem: { id?: string; title?: string; content?: string; date?: string; type: string; published?: boolean }) {
     try {
-      switch (type) {
-        case 'news':
-          if (editingItem.id) {
-            const updatedItem = updateNewsItem(editingItem.id, data);
-            if (updatedItem) {
-              setNewsItems(getAllNewsItems());
-            }
-          } else {
-            const newItem = addNewsItem(data);
-            setNewsItems(getAllNewsItems());
-          }
-          break;
-        case 'services':
-          if (editingItem.id) {
-            const updatedItem = updateService(editingItem.id, data);
-            if (updatedItem) {
-              setServices(getAllServices());
-            }
-          } else {
-            const newItem = addService(data);
-            setServices(getAllServices());
-          }
-          break;
-        case 'team':
-          if (editingItem.id) {
-            const updatedItem = updateTeamMember(editingItem.id, data);
-            if (updatedItem) {
-              setTeamMembers(getAllTeamMembers());
-            }
-          } else {
-            const newItem = addTeamMember(data);
-            setTeamMembers(getAllTeamMembers());
-          }
-          break;
+      const method = newItem.id ? 'PATCH' : 'POST';
+      const res = await fetch('/api/news', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newItem)
+      });
+
+      const body = await res.json();
+
+      if (!res.ok) {
+        console.error(`${method} /api/news failed:`, body);
+        return;
       }
-      
+
+      const saved = body;
+      if (method === 'POST') {
+        setNewsItems((prev) => [saved, ...prev]);
+      } else {
+        setNewsItems((prev) => prev.map((i) => (i.id === String(saved.id) ? {
+          id: String(saved.id),
+          title: saved.title ?? '',
+          content: saved.content ?? '',
+          date: saved.date ? (typeof saved.date === 'string' ? saved.date : new Date(saved.date).toISOString().split('T')[0]) : '',
+          type: saved.type ?? 'news',
+          published: !!saved.published
+        } : i)));
+      }
+
       setShowForm(false);
       setEditingItem(null);
-    } catch (error) {
-      console.error('Error saving content:', error);
+    } catch (err) {
+      console.error('Error creating/updating news item:', err);
     }
-  };
+  }
 
   const renderNewsManagement = () => (
     <div className="space-y-6">
@@ -503,7 +519,8 @@ function ContentForm({ item, onSave, onCancel }: { item: any; onSave: (data: any
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    // include id when editing so handleSave can PATCH
+    onSave({ ...formData, id: item?.id });
   };
 
   return (
