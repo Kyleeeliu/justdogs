@@ -175,7 +175,6 @@ export default function ContentManagementPage() {
     setShowForm(true);
   };
 
-<<<<<<< HEAD
   const handleDelete = async (id: string, type: string) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
     try {
