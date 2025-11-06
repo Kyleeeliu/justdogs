@@ -29,6 +29,31 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        {/* Preload Comic Sans fonts with web-optimized formats for immediate loading on all devices */}
+        <link
+          rel="preload"
+          href="/fonts/comicfont/Comic Sans MS/Web Fonts/7cc6719bd5f0310be3150ba33418e72e.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/comicfont/Comic Sans MS/Web Fonts/7cc6719bd5f0310be3150ba33418e72e.woff"
+          as="font"
+          type="font/woff"
+          crossOrigin="anonymous"
+        />
+        {/* Preload Reindeer Games font for slogan */}
+        <link
+          rel="preload"
+          href="/fonts/KBREINDEERGAMES.ttf"
+          as="font"
+          type="font/ttf"
+          crossOrigin="anonymous"
+        />
+        {/* DNS prefetch for faster font loading */}
+        <link rel="dns-prefetch" href="/fonts/" />
       </head>
       <body className="min-h-screen bg-gray-50 text-base leading-relaxed">
         <AuthProvider>

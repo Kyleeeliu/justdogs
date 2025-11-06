@@ -139,8 +139,8 @@ export default function NewsPage() {
                 .map((item) => (
                   <div key={item.id} className="bg-[rgb(0_32_96)] bg-opacity-10 rounded-lg p-4">
                     <h3 className="font-semibold text-[rgb(0_32_96)] mb-2">{item.title}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{formatDate(item.date)}</p>
-                    <p className="text-gray-700 text-sm mb-3">{item.content}</p>
+                    <p className="text-sm text-gray-900 font-medium mb-2">{formatDate(item.date)}</p>
+                    <p className="text-gray-900 text-sm mb-3">{item.content}</p>
                     <Button 
                       size="sm" 
                       className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"

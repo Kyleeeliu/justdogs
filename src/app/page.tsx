@@ -35,7 +35,7 @@ export default function HomePage() {
 
       {/* Slogan */}
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2 drop-shadow-md">
+        <h2 className="text-2xl font-bold text-white mb-2 drop-shadow-md slogan-font">
           SOCIALISE | STIMULATE | EXERCISE | EDUCATE
         </h2>
         <p className="text-lg text-white/90 max-w-2xl mx-auto drop-shadow-md mb-6">
