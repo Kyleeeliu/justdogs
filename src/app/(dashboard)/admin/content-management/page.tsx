@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { getCurrentUser } from '@/lib/auth/auth';
-import { User } from '@/types';
+import { User, ApprovalStatus } from '@/types';
 import { 
   getAllNewsItems, 
   updateNewsItem, 
@@ -30,7 +30,8 @@ import {
   NewspaperIcon,
   UsersIcon,
   CogIcon,
-  PhotoIcon
+  PhotoIcon,
+  UserPlusIcon
 } from '@heroicons/react/24/outline';
 
 interface NewsItem {
@@ -61,10 +62,11 @@ interface TeamMember {
 export default function ContentManagementPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'news' | 'services' | 'team' | 'gallery'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'services' | 'team' | 'gallery' | 'trainers'>('news');
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [pendingTrainers, setPendingTrainers] = useState<User[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
   const router = useRouter();
@@ -127,6 +129,9 @@ export default function ContentManagementPage() {
         // keep services/team using existing in-memory helpers for now
         setServices(getAllServices());
         setTeamMembers(getAllTeamMembers());
+        
+        // Load pending trainers from localStorage
+        loadPendingTrainers();
       } catch (error) {
         console.error('Error loading content data:', error);
       }
@@ -134,6 +139,69 @@ export default function ContentManagementPage() {
 
     loadData();
   }, [user]);
+
+  // Function to load pending trainers from localStorage
+  const loadPendingTrainers = () => {
+    const pending: User[] = [];
+    
+    // Check localStorage for pending trainers
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('pendingTrainer_')) {
+        try {
+          const trainerData = localStorage.getItem(key);
+          if (trainerData) {
+            const trainer = JSON.parse(trainerData);
+            if (trainer.approval_status === 'pending') {
+              pending.push(trainer);
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing pending trainer data:', error);
+        }
+      }
+    }
+    
+    setPendingTrainers(pending);
+  };
+
+  // Function to approve/reject trainer
+  const handleTrainerApproval = async (trainerId: string, email: string, action: 'approve' | 'reject') => {
+    try {
+      const trainerKey = `pendingTrainer_${email}`;
+      const trainerData = localStorage.getItem(trainerKey);
+      
+      if (!trainerData) {
+        console.error('Trainer data not found');
+        return;
+      }
+      
+      const trainer = JSON.parse(trainerData);
+      
+      if (action === 'approve') {
+        // Update trainer status to approved
+        trainer.approval_status = 'approved';
+        
+        // Move from pending to approved - store as regular user
+        localStorage.setItem(`newUser_${email}`, JSON.stringify(trainer));
+        localStorage.removeItem(trainerKey);
+        
+        console.log('Trainer approved:', trainer);
+      } else {
+        // Update trainer status to rejected
+        trainer.approval_status = 'rejected';
+        localStorage.setItem(trainerKey, JSON.stringify(trainer));
+        
+        console.log('Trainer rejected:', trainer);
+      }
+      
+      // Reload pending trainers
+      loadPendingTrainers();
+      
+    } catch (error) {
+      console.error('Error handling trainer approval:', error);
+    }
+  };
 
   // Show loading state
   if (loading) {
@@ -438,6 +506,75 @@ export default function ContentManagementPage() {
     </div>
   );
 
+  const renderTrainerApprovals = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Trainer Approvals</h2>
+        <div className="text-sm text-gray-600">
+          {pendingTrainers.length} pending approval{pendingTrainers.length !== 1 ? 's' : ''}
+        </div>
+      </div>
+      
+      {pendingTrainers.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <div className="text-gray-400 text-6xl mb-4">✅</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Pending Approvals</h3>
+            <p className="text-gray-600">All trainer applications have been processed.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {pendingTrainers.map((trainer) => (
+            <Card key={trainer.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="px-3 py-1 text-sm rounded-full bg-yellow-100 text-yellow-800 font-medium">
+                        Pending Approval
+                      </span>
+                      <span className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800">
+                        Trainer
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{trainer.full_name}</h3>
+                    <p className="text-gray-600 mb-2">
+                      <span className="font-medium">Email:</span> {trainer.email}
+                    </p>
+                    {trainer.phone && (
+                      <p className="text-gray-600 mb-2">
+                        <span className="font-medium">Phone:</span> {trainer.phone}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-500">
+                      Applied: {new Date(trainer.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-3 ml-6">
+                    <Button
+                      onClick={() => handleTrainerApproval(trainer.id, trainer.email, 'approve')}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      ✓ Approve
+                    </Button>
+                    <Button
+                      onClick={() => handleTrainerApproval(trainer.id, trainer.email, 'reject')}
+                      variant="outline"
+                      className="text-red-600 border-red-600 hover:bg-red-50"
+                    >
+                      ✗ Reject
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -452,6 +589,7 @@ export default function ContentManagementPage() {
             { id: 'news', name: 'News & Events', icon: NewspaperIcon },
             { id: 'services', name: 'Services', icon: CogIcon },
             { id: 'team', name: 'Team', icon: UsersIcon },
+            { id: 'trainers', name: 'Trainer Approvals', icon: UserPlusIcon },
             { id: 'gallery', name: 'Gallery', icon: PhotoIcon }
           ].map((tab) => (
             <button
@@ -474,6 +612,7 @@ export default function ContentManagementPage() {
       {activeTab === 'news' && renderNewsManagement()}
       {activeTab === 'services' && renderServicesManagement()}
       {activeTab === 'team' && renderTeamManagement()}
+      {activeTab === 'trainers' && renderTrainerApprovals()}
       {activeTab === 'gallery' && renderGalleryManagement()}
 
       {/* Edit Form Modal */}

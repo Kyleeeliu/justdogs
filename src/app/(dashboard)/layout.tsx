@@ -74,14 +74,34 @@ export default function DashboardLayout({
       try {
         console.log('Dashboard layout: Checking authentication...');
         
-        // Add a small delay to ensure localStorage is available and properly set
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Try multiple times with increasing delays to handle race conditions
+        let currentUser = null;
+        let attempts = 0;
+        const maxAttempts = 10;
         
-        const currentUser = await getCurrentUser();
-        console.log('Dashboard layout: Current user result:', currentUser);
+        while (attempts < maxAttempts && !currentUser) {
+          try {
+            // Add progressive delay
+            if (attempts > 0) {
+              await new Promise(resolve => setTimeout(resolve, 50 * attempts));
+            }
+            
+            currentUser = await getCurrentUser();
+            console.log(`Dashboard layout: Auth check attempt ${attempts + 1}:`, currentUser?.full_name || 'no user');
+            
+            if (currentUser) {
+              break;
+            }
+            
+            attempts++;
+          } catch (error) {
+            console.error(`Dashboard layout: Auth check attempt ${attempts + 1} error:`, error);
+            attempts++;
+          }
+        }
         
         if (!currentUser) {
-          console.log('Dashboard layout: No user found, redirecting to login');
+          console.log('Dashboard layout: No user found after', maxAttempts, 'attempts, redirecting to login');
           setAuthChecked(true);
           router.push('/login');
           return;

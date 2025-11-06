@@ -32,11 +32,12 @@ function LoginForm() {
 
     try {
       console.log('Login page: Attempting sign in for:', email);
-      await signIn(email, password);
-      console.log('Login page: Sign in successful, waiting before redirect...');
+      const result = await signIn(email, password);
+      console.log('Login page: Sign in successful:', result);
       
-      // Add a small delay to ensure localStorage is properly set
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // For Supabase authentication, the session is handled automatically
+      // Just wait a moment for the auth state to update and then redirect
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       console.log('Login page: Redirecting to dashboard');
       router.push('/dashboard');

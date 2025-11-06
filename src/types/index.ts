@@ -1,4 +1,5 @@
 export type UserRole = 'admin' | 'trainer' | 'parent' | 'behaviorist';
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 export interface User {
   id: string;
@@ -7,6 +8,7 @@ export interface User {
   role: UserRole;
   phone?: string;
   avatar_url?: string;
+  approval_status?: ApprovalStatus; // For trainers requiring admin approval
   created_at: string;
   updated_at: string;
 }

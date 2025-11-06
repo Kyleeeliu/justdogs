@@ -1,5 +1,5 @@
 import { supabase } from '../supabase/client';
-import { User, UserRole } from '@/types';
+import { User, UserRole, ApprovalStatus } from '@/types';
 import { getCurrentSupabaseUser } from '../supabase/users';
 import { syncUserWithAuth as syncUserWithLocalStorage } from '../database/users';
 
@@ -124,6 +124,16 @@ export async function signIn(email: string, password: string) {
       
       if (validPasswords.includes(password)) {
         console.log('Valid demo account password');
+        
+        // Check if trainer needs approval
+        if (mockUser.role === 'trainer' && mockUser.approval_status === 'pending') {
+          throw new Error('Your trainer account is pending admin approval. Please wait for approval before logging in.');
+        }
+        
+        if (mockUser.role === 'trainer' && mockUser.approval_status === 'rejected') {
+          throw new Error('Your trainer account has been rejected. Please contact support for more information.');
+        }
+        
         // Sync user with database
         const syncedUser = syncUserWithLocalStorage(mockUser);
         safeSetLocalStorage('mockUser', JSON.stringify(syncedUser));
@@ -161,6 +171,15 @@ export async function signIn(email: string, password: string) {
     if (mockUser) {
       const validPasswords = ['admin123', 'trainer123', 'parent123'];
       if (validPasswords.includes(password)) {
+        // Check if trainer needs approval
+        if (mockUser.role === 'trainer' && mockUser.approval_status === 'pending') {
+          throw new Error('Your trainer account is pending admin approval. Please wait for approval before logging in.');
+        }
+        
+        if (mockUser.role === 'trainer' && mockUser.approval_status === 'rejected') {
+          throw new Error('Your trainer account has been rejected. Please contact support for more information.');
+        }
+        
         const syncedUser = syncUserWithLocalStorage(mockUser);
         safeSetLocalStorage('mockUser', JSON.stringify(syncedUser));
         return { user: syncedUser, session: { user: syncedUser } };
@@ -185,22 +204,47 @@ export async function signUp(email: string, password: string, fullName: string, 
       role,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      // Add approval status for trainers
+      ...(role === 'trainer' && { approval_status: 'pending' }),
     };
     
     // Sync user with database
     const syncedUser = syncUserWithLocalStorage(newUser);
     
-    // Store the new user temporarily with their password
-    localStorage.setItem('newUser_' + email, JSON.stringify(syncedUser));
-    localStorage.setItem('userPassword_' + email, password);
-    
-    // Also store in mockUsers array for future reference
-    mockUsers.push(syncedUser);
-    
-    console.log('Created new mock user:', syncedUser);
-    
-    // Return the user immediately for mock authentication
-    return { user: syncedUser, session: { user: syncedUser } };
+    // Handle different flows based on role
+    if (role === 'trainer') {
+      // Trainers need admin approval - store but don't auto-login
+      console.log('Trainer registration - storing for admin approval');
+      localStorage.setItem('pendingTrainer_' + email, JSON.stringify(syncedUser));
+      localStorage.setItem('userPassword_' + email, password);
+      
+      // Add to mockUsers but with pending status
+      mockUsers.push(syncedUser);
+      
+      console.log('Created pending trainer account:', syncedUser);
+      
+      // Return without session to prevent auto-login
+      return {
+        user: syncedUser,
+        session: null,
+        message: 'Trainer account created and pending admin approval.'
+      };
+    } else {
+      // Dog parents can register and login immediately
+      console.log('Dog parent registration - auto-login enabled');
+      
+      // Store the new user temporarily with their password
+      localStorage.setItem('newUser_' + email, JSON.stringify(syncedUser));
+      localStorage.setItem('userPassword_' + email, password);
+      
+      // Also store in mockUsers array for future reference
+      mockUsers.push(syncedUser);
+      
+      console.log('Created new dog parent user:', syncedUser);
+      
+      // Return with session for immediate login
+      return { user: syncedUser, session: { user: syncedUser } };
+    }
   }
 
   // Real Supabase registration
@@ -214,6 +258,8 @@ export async function signUp(email: string, password: string, fullName: string, 
         data: {
           full_name: fullName,
           role: role,
+          // Add approval status for trainers
+          ...(role === 'trainer' && { approval_status: 'pending' }),
         },
       },
     });
@@ -225,20 +271,29 @@ export async function signUp(email: string, password: string, fullName: string, 
 
     console.log('Supabase signup successful:', data);
     
-    // If email confirmation is required, the user won't be signed in automatically
-    if (data.user && !data.session) {
-      console.log('Email confirmation required');
-      return { 
-        user: data.user, 
+    // Handle different flows based on role
+    if (role === 'trainer') {
+      // Trainers need admin approval - don't auto-login even if email confirmation is disabled
+      console.log('Trainer registration - requires admin approval');
+      return {
+        user: data.user,
         session: null,
-        message: 'Please check your email to confirm your account before signing in.'
+        message: 'Trainer account created and pending admin approval.'
       };
-    }
-    
-    // If user is automatically signed in (email confirmation disabled)
-    if (data.user && data.session) {
-      console.log('User automatically signed in');
-      return data;
+    } else if (role === 'parent') {
+      // Dog parents can login immediately if email confirmation is disabled
+      if (data.user && data.session) {
+        console.log('Dog parent automatically signed in');
+        return data;
+      } else if (data.user && !data.session) {
+        // If email confirmation is required for parents, handle it
+        console.log('Dog parent email confirmation required');
+        return {
+          user: data.user,
+          session: null,
+          message: 'Please check your email to confirm your account before signing in.'
+        };
+      }
     }
     
     return data;
@@ -458,12 +513,17 @@ export async function resetPassword(email: string) {
     return;
   }
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`,
-  });
+  // Type guard to ensure we have the real Supabase client
+  if ('resetPasswordForEmail' in supabase.auth) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
 
-  if (error) {
-    throw new Error(error.message);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } else {
+    throw new Error('Password reset not available in mock mode');
   }
 }
 
@@ -473,11 +533,16 @@ export async function updatePassword(newPassword: string) {
     return;
   }
 
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword,
-  });
+  // Type guard to ensure we have the real Supabase client
+  if ('updateUser' in supabase.auth) {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
 
-  if (error) {
-    throw new Error(error.message);
+    if (error) {
+      throw new Error(error.message);
+    }
+  } else {
+    throw new Error('Password update not available in mock mode');
   }
 }
