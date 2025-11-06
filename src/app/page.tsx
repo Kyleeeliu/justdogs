@@ -23,9 +23,9 @@ export default function HomePage() {
       <div className="relative z-10 flex flex-col items-center justify-center px-6">
       {/* Logo */}
       <div className="mb-8">
-        <img 
-          src="/images/icons/logo.png" 
-          alt="Just Dogs Logo" 
+        <img
+          src="/images/icons/logo.gif"
+          alt="Just Dogs Logo"
           className="w-20 h-20 mx-auto mb-4"
         />
         <h1 className="text-4xl font-bold text-white text-center drop-shadow-lg">

@@ -4,8 +4,8 @@
 export const images = {
   // Company Logo
   logo: {
-    dogGraduationCap: '/images/icons/logo.png',
-    dogGraduationCapWhite: '/images/icons/logo.png',
+    dogGraduationCap: '/images/icons/logo.gif',
+    dogGraduationCapWhite: '/images/icons/logo.gif',
     favicon: '/favicon.ico',
   },
 

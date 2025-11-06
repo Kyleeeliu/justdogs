@@ -69,9 +69,9 @@ export default function NewsPage() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex justify-between items-center py-4">
             <Link href="/" className="flex items-center">
-              <img 
-                src="/images/icons/logo.png" 
-                alt="Just Dogs Logo" 
+              <img
+                src="/images/icons/logo.gif"
+                alt="Just Dogs Logo"
                 className="w-8 h-8 mr-3"
               />
               <span className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</span>
