@@ -57,34 +57,34 @@ export default function HomePage() {
 
       {/* Main Navigation Buttons */}
       <div className="grid grid-cols-2 gap-4 mb-8 max-w-2xl w-full">
-        <Link href="/services">
-          <Button 
-            size="lg" 
-            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm"
+        <Link href="/services" className="flex">
+          <Button
+            size="lg"
+            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm flex items-center justify-center"
           >
             🐕 Our Services
           </Button>
         </Link>
-        <Link href="/team">
-          <Button 
-            size="lg" 
-            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm"
+        <Link href="/team" className="flex">
+          <Button
+            size="lg"
+            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm flex items-center justify-center"
           >
             👥 Meet the Team
           </Button>
         </Link>
-        <Link href="/gallery">
-          <Button 
-            size="lg" 
-            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm"
+        <Link href="/gallery" className="flex">
+          <Button
+            size="lg"
+            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm flex items-center justify-center"
           >
             🐾 Happy Dogs
           </Button>
         </Link>
-        <Link href="/news">
-          <Button 
-            size="lg" 
-            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm"
+        <Link href="/news" className="flex">
+          <Button
+            size="lg"
+            className="w-full h-16 text-lg bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 hover:scale-105 shadow-xl backdrop-blur-sm flex items-center justify-center"
           >
             📰 News & Events
           </Button>
@@ -92,20 +92,20 @@ export default function HomePage() {
       </div>
 
       {/* Login/Register Buttons */}
-      <div className="flex gap-4">
-        <Link href="/login">
-          <Button 
-            variant="outline" 
-            size="lg" 
-            className="px-8 py-3 border-2 border-white text-[rgb(0_32_96)] hover:bg-white hover:text-[rgb(0_32_96)] rounded-xl transition-all duration-300 backdrop-blur-sm bg-white/90"
+      <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+        <Link href="/login" className="flex-1">
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full px-8 py-3 border-2 border-white text-[rgb(0_32_96)] hover:bg-white hover:text-[rgb(0_32_96)] rounded-xl transition-all duration-300 backdrop-blur-sm bg-white/90 flex items-center justify-center"
           >
             Login
           </Button>
         </Link>
-        <Link href="/register">
-          <Button 
-            size="lg" 
-            className="px-8 py-3 bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 shadow-xl backdrop-blur-sm"
+        <Link href="/register" className="flex-1">
+          <Button
+            size="lg"
+            className="w-full px-8 py-3 bg-white/90 hover:bg-white text-[rgb(0_32_96)] rounded-xl transition-all duration-300 shadow-xl backdrop-blur-sm flex items-center justify-center"
           >
             Register
           </Button>

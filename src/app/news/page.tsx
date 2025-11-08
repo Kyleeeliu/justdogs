@@ -137,13 +137,13 @@ export default function NewsPage() {
                 .filter(item => item.type === 'event')
                 .slice(0, 3)
                 .map((item) => (
-                  <div key={item.id} className="bg-[rgb(0_32_96)] bg-opacity-10 rounded-lg p-4">
+                  <div key={item.id} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h3 className="font-semibold text-[rgb(0_32_96)] mb-2">{item.title}</h3>
-                    <p className="text-sm text-gray-900 font-medium mb-2">{formatDate(item.date)}</p>
-                    <p className="text-gray-900 text-sm mb-3">{item.content}</p>
-                    <Button 
-                      size="sm" 
-                      className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+                    <p className="text-sm text-[rgb(0_32_96)] font-medium mb-2">{formatDate(item.date)}</p>
+                    <p className="text-gray-800 text-sm mb-3">{item.content}</p>
+                    <Button
+                      size="sm"
+                      className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white w-full sm:w-auto"
                       onClick={() => window.open('https://justdogs.co.za', '_blank')}
                     >
                       Register Now
@@ -165,23 +165,19 @@ export default function NewsPage() {
                 .filter(item => item.type === 'announcement')
                 .slice(0, 2)
                 .map((item, index) => (
-                  <div 
-                    key={item.id} 
-                    className={`text-center p-6 rounded-xl text-white ${
-                      index === 0 
-                        ? 'bg-gradient-to-br from-[rgb(0_32_96)] to-[rgb(0_24_72)]' 
-                        : 'bg-gradient-to-br from-green-500 to-green-600'
+                  <div
+                    key={item.id}
+                    className={`text-center p-6 rounded-xl ${
+                      index === 0
+                        ? 'announcement-card'
+                        : 'bg-light-readable'
                     }`}
                   >
-                    <h3 className="text-xl font-bold mb-3">{item.title}</h3>
-                    <p className="mb-4">{item.content}</p>
-                    <Button 
-                      variant="outline" 
-                      className={`border-white text-white hover:bg-white ${
-                        index === 0 
-                          ? 'hover:text-[rgb(0_32_96)]' 
-                          : 'hover:text-green-600'
-                      }`}
+                    <h3 className="text-xl font-bold mb-3 text-contrast-high">{item.title}</h3>
+                    <p className="mb-4 text-contrast-high">{item.content}</p>
+                    <Button
+                      variant="outline"
+                      className="border-white text-white hover:bg-white hover:text-gray-900 font-medium"
                       onClick={() => window.open('https://justdogs.co.za', '_blank')}
                     >
                       {index === 0 ? 'Claim Offer' : 'Learn More'}

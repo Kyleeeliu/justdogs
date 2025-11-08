@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
 
 import { 
   HomeIcon, 
@@ -15,8 +16,6 @@ import {
   XMarkIcon,
   ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline';
-import { getCurrentUser, signOut } from '@/lib/auth/auth';
-import { User } from '@/types';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
@@ -32,104 +31,21 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [authChecked, setAuthChecked] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const { user, loading, initialized, logout, isAuthenticated } = useAuth();
 
-  // Check for existing user session on component mount
+  // Redirect to login if not authenticated after initialization
   useEffect(() => {
-    const checkExistingSession = () => {
-      try {
-        const mockUserStr = localStorage.getItem('mockUser');
-        if (mockUserStr) {
-          const existingUser = JSON.parse(mockUserStr);
-          if (existingUser.id && existingUser.email && existingUser.full_name && existingUser.role) {
-            console.log('Found existing user session:', existingUser.full_name);
-            setUser(existingUser);
-            setAuthChecked(true);
-            setLoading(false);
-            return true;
-          }
-        }
-      } catch (error) {
-        console.error('Error checking existing session:', error);
-      }
-      return false;
-    };
-
-    // Only check if we haven't already checked auth
-    if (!authChecked) {
-      const hasExistingSession = checkExistingSession();
-      if (!hasExistingSession) {
-        // No existing session, proceed with normal auth check
-        setLoading(true);
-      }
+    if (initialized && !isAuthenticated) {
+      console.log('Dashboard layout: User not authenticated, redirecting to login');
+      router.push('/login');
     }
-  }, [authChecked]);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        console.log('Dashboard layout: Checking authentication...');
-        
-        // Try multiple times with increasing delays to handle race conditions
-        let currentUser = null;
-        let attempts = 0;
-        const maxAttempts = 10;
-        
-        while (attempts < maxAttempts && !currentUser) {
-          try {
-            // Add progressive delay
-            if (attempts > 0) {
-              await new Promise(resolve => setTimeout(resolve, 50 * attempts));
-            }
-            
-            currentUser = await getCurrentUser();
-            console.log(`Dashboard layout: Auth check attempt ${attempts + 1}:`, currentUser?.full_name || 'no user');
-            
-            if (currentUser) {
-              break;
-            }
-            
-            attempts++;
-          } catch (error) {
-            console.error(`Dashboard layout: Auth check attempt ${attempts + 1} error:`, error);
-            attempts++;
-          }
-        }
-        
-        if (!currentUser) {
-          console.log('Dashboard layout: No user found after', maxAttempts, 'attempts, redirecting to login');
-          setAuthChecked(true);
-          router.push('/login');
-          return;
-        }
-        
-        console.log('Dashboard layout: User authenticated:', currentUser.full_name);
-        setUser(currentUser);
-        setAuthChecked(true);
-      } catch (error) {
-        console.error('Dashboard layout: Auth check error:', error);
-        setAuthChecked(true);
-        router.push('/login');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Only run auth check once on mount
-    if (!authChecked) {
-      console.log('Dashboard layout: Starting auth check...');
-      checkAuth();
-    }
-  }, [router, authChecked]);
+  }, [initialized, isAuthenticated, router]);
 
   const handleSignOut = async () => {
     try {
-      await signOut();
-      setUser(null);
+      await logout();
       router.push('/');
     } catch (error) {
       console.error('Error signing out:', error);
@@ -137,7 +53,7 @@ export default function DashboardLayout({
   };
 
   // Show loading while checking authentication
-  if (loading || !authChecked) {
+  if (loading || !initialized) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -149,7 +65,7 @@ export default function DashboardLayout({
   }
 
   // If no user after auth check, show login redirect
-  if (!user) {
+  if (!isAuthenticated || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

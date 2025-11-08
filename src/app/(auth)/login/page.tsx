@@ -35,12 +35,12 @@ function LoginForm() {
       const result = await signIn(email, password);
       console.log('Login page: Sign in successful:', result);
       
-      // For Supabase authentication, the session is handled automatically
-      // Just wait a moment for the auth state to update and then redirect
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      console.log('Login page: Redirecting to dashboard');
-      router.push('/dashboard');
+      if (result && result.user) {
+        console.log('Login page: Redirecting to dashboard');
+        router.push('/dashboard');
+      } else {
+        setError('Login failed - no user data received');
+      }
     } catch (err) {
       console.error('Login page: Sign in error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during sign in');
