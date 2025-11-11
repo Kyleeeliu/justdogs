@@ -1,16 +1,5 @@
 import { supabase } from './client';
 import { User } from '@/types';
-import * as localUsers from '../database/users';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
-
-// Check if Supabase is properly configured
-const isSupabaseConfigured = () => {
-  return process.env.NEXT_PUBLIC_SUPABASE_URL &&
-         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-         process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co';
-};
 
 // Supabase table name for users
 const USERS_TABLE = 'users';
@@ -23,9 +12,7 @@ export const createUser = async (userData: Omit<User, 'id' | 'created_at' | 'upd
       full_name: userData.full_name,
       role: userData.role,
       phone: userData.phone,
-      avatar_url: userData.avatar_url,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      ...(userData.approval_status && { approval_status: userData.approval_status }),
     }])
     .select()
     .single();
@@ -39,54 +26,27 @@ export const createUser = async (userData: Omit<User, 'id' | 'created_at' | 'upd
 };
 
 export const getAllUsers = async (): Promise<User[]> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for user retrieval (Supabase not configured)');
-    return localUsers.getAllUsers();
-  }
-
-  // Check if we're in mock mode by testing the supabase client
-  const isMockMode = supabaseUrl === 'https://placeholder.supabase.co' || supabaseAnonKey === 'placeholder-key';
-  if (isMockMode) {
-    console.log('Using local database for user retrieval (Mock mode)');
-    return localUsers.getAllUsers();
-  }
-
   try {
-    console.log('Attempting to fetch users from Supabase...');
+    console.log('Fetching all users from Supabase...');
     const { data, error } = await supabase
       .from(USERS_TABLE)
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching users from Supabase:', {
-        message: error.message || 'No message',
-        code: error.code || 'No code',
-        details: error.details || 'No details',
-        hint: error.hint || 'No hint',
-        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
-      });
+      console.error('Error fetching users from Supabase:', error);
       throw error;
     }
 
-    console.log('Successfully fetched users from Supabase:', data?.length || 0, 'users');
+    console.log('Successfully fetched users from Supabase:', data?.length || 0);
     return data || [];
   } catch (error) {
-    console.error('Supabase user retrieval failed, falling back to local database:', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
-    });
-    return localUsers.getAllUsers();
+    console.error('Failed to fetch users:', error);
+    throw error;
   }
 };
 
 export const getUserById = async (id: string): Promise<User | null> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for user retrieval by ID');
-    return localUsers.getUserById(id) || null;
-  }
-
   try {
     const { data, error } = await supabase
       .from(USERS_TABLE)
@@ -95,71 +55,63 @@ export const getUserById = async (id: string): Promise<User | null> => {
       .single();
 
     if (error) {
-      console.error('Error fetching user by ID from Supabase:', error);
+      if (error.code === 'PGRST116') {
+        // No rows returned
+        return null;
+      }
+      console.error('Error fetching user by ID:', error);
       throw error;
     }
 
     return data;
   } catch (error) {
-    console.error('Supabase user by ID retrieval failed, falling back to local database:', error);
-    return localUsers.getUserById(id) || null;
+    console.error('Failed to fetch user by ID:', error);
+    return null;
   }
 };
 
 export const getUserByEmail = async (email: string): Promise<User | null> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for user retrieval by email');
-    return localUsers.getUserByEmail(email) || null;
-  }
-
   try {
-    console.log('Attempting to fetch user by email from Supabase:', email);
+    console.log('Fetching user by email:', email);
     
     const { data, error } = await supabase
       .from(USERS_TABLE)
       .select('*')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      // Handle specific Supabase errors
-      if (error.code === 'PGRST116') {
-        // No rows returned - user doesn't exist
-        console.log('User not found in Supabase:', email);
-        return null;
-      }
+      // Log all possible error properties
+      console.error('Error fetching user by email:', {
+        error,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+        stringified: JSON.stringify(error),
+        keys: Object.keys(error),
+      });
       
-      // Log error with all possible properties
-      const errorInfo = {
-        message: error.message || 'Unknown error',
-        code: error.code || 'No code',
-        details: error.details || 'No details',
-        hint: error.hint || 'No hint'
-      };
-      
-      console.log('Error fetching user by email from Supabase - Message:', error.message || 'No message');
-      console.log('Error fetching user by email from Supabase - Code:', error.code || 'No code');
-      console.log('Error fetching user by email from Supabase - Details:', error.details || 'No details');
-      console.log('Error fetching user by email from Supabase - Hint:', error.hint || 'No hint');
-      console.log('Full error object stringified:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-      
-      // For other errors, fall back to local database
-      console.log('Falling back to local database due to Supabase error');
-      return localUsers.getUserByEmail(email) || null;
+      // Don't throw - just return null
+      // The user might not exist yet or there might be a connection issue
+      console.log('Returning null due to error');
+      return null;
     }
 
-    console.log('Successfully fetched user from Supabase:', data?.email);
+    if (!data) {
+      console.log('No user found for email:', email);
+      return null;
+    }
+
+    console.log('Successfully fetched user:', data.email);
     return data;
   } catch (error) {
-    const errorInfo = {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : String(error),
+    console.error('Exception in getUserByEmail:', {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
-    };
-    
-    console.log('Supabase user by email retrieval failed, falling back to local database:', errorInfo);
-    return localUsers.getUserByEmail(email) || null;
+    });
+    return null;
   }
 };
 
@@ -231,18 +183,10 @@ export const getUsersByRole = async (role: string): Promise<User[]> => {
   return data || [];
 };
 
-// Sync user with Supabase auth - create user profile if it doesn't exist
-export const syncUserWithAuth = async (userData: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> => {
-  const existingUser = await getUserByEmail(userData.email);
-  if (existingUser) {
-    return existingUser;
-  }
-  return await createUser(userData);
-};
-
 // Get current user from Supabase auth and sync with users table
 export const getCurrentSupabaseUser = async (): Promise<User | null> => {
   try {
+    // First get the authenticated user
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
     
     if (authError) {
@@ -251,36 +195,29 @@ export const getCurrentSupabaseUser = async (): Promise<User | null> => {
     }
     
     if (!authUser || !authUser.email) {
-      console.log('No authenticated user found');
+      // This is normal - no one is logged in yet
+      console.log('No authenticated user (not logged in)');
       return null;
     }
 
-    // Check if user exists in our users table
-    let user = await getUserByEmail(authUser.email);
+    console.log('Auth user found:', authUser.email);
+
+    // Get user profile from users table
+    const user = await getUserByEmail(authUser.email);
     
     if (!user) {
-      console.log('User not found in users table, creating new user profile');
-      try {
-        // Create user profile if it doesn't exist
-        user = await createUser({
-          email: authUser.email,
-          full_name: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
-          role: authUser.user_metadata?.role || 'parent',
-          phone: authUser.user_metadata?.phone,
-          avatar_url: authUser.user_metadata?.avatar_url,
-        });
-        console.log('Created new user profile:', user);
-      } catch (createError) {
-        console.error('Error creating user profile:', createError);
-        return null;
-      }
+      console.log('User profile not found in database for:', authUser.email);
+      console.log('Note: User profile should be created automatically via database trigger on signup');
+      return null;
     }
 
+    console.log('User profile found:', user.email);
     return user;
   } catch (error) {
-    console.error('Error in getCurrentSupabaseUser:', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
+    console.error('Exception in getCurrentSupabaseUser:', {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
     });
     return null;
   }

@@ -36,15 +36,19 @@ function LoginForm() {
       console.log('Login page: Sign in successful:', result);
       
       if (result && result.user) {
+        console.log('Login page: User authenticated:', result.user);
+        
+        // Redirect to dashboard
         console.log('Login page: Redirecting to dashboard');
-        router.push('/dashboard');
+        window.location.href = '/dashboard';
       } else {
+        console.error('Login page: No user data received');
         setError('Login failed - no user data received');
+        setLoading(false);
       }
     } catch (err) {
       console.error('Login page: Sign in error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during sign in');
-    } finally {
       setLoading(false);
     }
   };
@@ -125,7 +129,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center px-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center px-6" suppressHydrationWarning>
       {/* Just Dogs Logo */}
       <div className="mb-8">
         <img

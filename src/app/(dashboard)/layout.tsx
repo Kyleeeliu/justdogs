@@ -37,23 +37,29 @@ export default function DashboardLayout({
 
   // Redirect to login if not authenticated after initialization
   useEffect(() => {
-    if (initialized && !isAuthenticated) {
-      console.log('Dashboard layout: User not authenticated, redirecting to login');
-      router.push('/login');
+    // CRITICAL FIX: Only redirect after auth is fully initialized AND we're sure there's no user
+    if (initialized && !loading && !isAuthenticated) {
+      console.log('Dashboard layout: User not authenticated after initialization, redirecting to login');
+      console.log('Dashboard layout: State:', { initialized, loading, isAuthenticated, user });
+      
+      // Use window.location for a hard redirect to ensure clean state
+      window.location.href = '/login';
     }
-  }, [initialized, isAuthenticated, router]);
+  }, [initialized, loading, isAuthenticated, user]);
 
   const handleSignOut = async () => {
     try {
       await logout();
-      router.push('/');
+      // Use hard redirect for logout
+      window.location.href = '/';
     } catch (error) {
       console.error('Error signing out:', error);
     }
   };
 
   // Show loading while checking authentication
-  if (loading || !initialized) {
+  // IMPORTANT: Wait for BOTH initialized AND !loading before making decisions
+  if (!initialized || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -64,7 +70,7 @@ export default function DashboardLayout({
     );
   }
 
-  // If no user after auth check, show login redirect
+  // If no user after auth check is complete, show redirect message
   if (!isAuthenticated || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">

@@ -1,9 +1,11 @@
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client-browser';
 
 class SessionManager {
   private refreshInterval: NodeJS.Timeout | null = null;
   private readonly REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
   private readonly TOKEN_REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes before expiry
+  private focusHandler: (() => void) | null = null;
+  private visibilityHandler: (() => void) | null = null;
 
   constructor() {
     // Don't auto-start monitoring in constructor
@@ -34,25 +36,30 @@ class SessionManager {
   }
 
   private startSessionMonitoring() {
-    // Clear any existing interval
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-    }
+    // Clear any existing interval and event listeners
+    this.stopSessionMonitoring();
 
     // Set up periodic session check
     this.refreshInterval = setInterval(async () => {
       await this.checkAndRefreshSession();
     }, this.REFRESH_INTERVAL);
 
-    // Also check session on page focus
-    window.addEventListener('focus', this.checkAndRefreshSession);
-    
-    // Check session on page visibility change
-    document.addEventListener('visibilitychange', () => {
+    // Create bound handlers to ensure proper cleanup
+    this.focusHandler = () => {
+      this.checkAndRefreshSession();
+    };
+
+    this.visibilityHandler = () => {
       if (!document.hidden) {
         this.checkAndRefreshSession();
       }
-    });
+    };
+
+    // Also check session on page focus
+    window.addEventListener('focus', this.focusHandler);
+    
+    // Check session on page visibility change
+    document.addEventListener('visibilitychange', this.visibilityHandler);
   }
 
   private checkAndRefreshSession = async () => {
@@ -85,13 +92,18 @@ class SessionManager {
         console.log('Refreshing session token...');
         
         // Check if refreshSession method exists (real Supabase client)
-        if (typeof (supabase.auth as any).refreshSession === 'function') {
-          const { data, error: refreshError } = await (supabase.auth as any).refreshSession();
-          
-          if (refreshError) {
-            console.error('Error refreshing session:', refreshError);
-          } else {
-            console.log('Session refreshed successfully');
+        const authClient = supabase.auth as any;
+        if (typeof authClient.refreshSession === 'function') {
+          try {
+            const { data, error: refreshError } = await authClient.refreshSession();
+            
+            if (refreshError) {
+              console.error('Error refreshing session:', refreshError);
+            } else {
+              console.log('Session refreshed successfully');
+            }
+          } catch (error) {
+            console.error('Exception during session refresh:', error);
           }
         } else {
           console.log('refreshSession method not available (mock mode)');
@@ -108,8 +120,14 @@ class SessionManager {
       this.refreshInterval = null;
     }
 
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('focus', this.checkAndRefreshSession);
+    if (typeof window !== 'undefined' && this.focusHandler) {
+      window.removeEventListener('focus', this.focusHandler);
+      this.focusHandler = null;
+    }
+
+    if (typeof document !== 'undefined' && this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
     }
   }
 
@@ -118,16 +136,22 @@ class SessionManager {
       console.log('Force refreshing session...');
       
       // Check if refreshSession method exists (real Supabase client)
-      if (typeof (supabase.auth as any).refreshSession === 'function') {
-        const { data, error } = await (supabase.auth as any).refreshSession();
-        
-        if (error) {
-          console.error('Error force refreshing session:', error);
+      const authClient = supabase.auth as any;
+      if (typeof authClient.refreshSession === 'function') {
+        try {
+          const { data, error } = await authClient.refreshSession();
+          
+          if (error) {
+            console.error('Error force refreshing session:', error);
+            return false;
+          }
+          
+          console.log('Session force refreshed successfully');
+          return true;
+        } catch (refreshError) {
+          console.error('Exception during force refresh:', refreshError);
           return false;
         }
-        
-        console.log('Session force refreshed successfully');
-        return true;
       } else {
         console.log('refreshSession method not available (mock mode)');
         return false;

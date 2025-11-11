@@ -1,4 +1,4 @@
-import { supabase } from './client';
+import { supabase } from './client-browser';
 import { Message } from '@/types';
 import * as localMessages from '../database/messages';
 

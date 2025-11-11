@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User } from '@/types';
 import { getCurrentUser, signOut } from '@/lib/auth/auth';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client-browser';
 import { sessionManager } from '@/lib/auth/sessionManager';
 
 export function useAuth() {
@@ -18,27 +18,31 @@ export function useAuth() {
     // Initialize auth state
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth state...');
+        console.log('useAuth: Initializing auth state...');
+        
+        setLoading(true);
+        
         const currentUser = await getCurrentUser();
+        console.log('useAuth: getCurrentUser returned:', currentUser?.email || 'no user');
         
         if (mounted) {
           setUser(currentUser);
           setInitialized(true);
-          console.log('Auth initialized with user:', currentUser?.email || 'none');
+          setLoading(false);
+          
+          console.log('useAuth: Auth initialized with user:', currentUser?.email || 'none');
           
           // Start session monitoring if user is already logged in
           if (currentUser) {
+            console.log('useAuth: Starting session monitoring');
             sessionManager.startMonitoring();
           }
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('useAuth: Error initializing auth:', error);
         if (mounted) {
           setUser(null);
           setInitialized(true);
-        }
-      } finally {
-        if (mounted) {
           setLoading(false);
         }
       }
@@ -48,8 +52,8 @@ export function useAuth() {
 
     // Set up auth state change listener for Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email || 'no user');
+      async (event: any, session: any) => {
+        console.log('useAuth: Auth state changed:', event, session?.user?.email || 'no user');
         
         if (!mounted) return;
 
@@ -58,22 +62,22 @@ export function useAuth() {
           try {
             const currentUser = await getCurrentUser();
             setUser(currentUser);
-            console.log('User signed in:', currentUser?.email);
+            console.log('useAuth: User signed in:', currentUser?.email);
             // Start session monitoring after successful login
             sessionManager.startMonitoring();
           } catch (error) {
-            console.error('Error getting user after sign in:', error);
+            console.error('useAuth: Error getting user after sign in:', error);
             setUser(null);
           }
         } else if (event === 'SIGNED_OUT') {
           // User signed out
           setUser(null);
-          console.log('User signed out');
+          console.log('useAuth: User signed out');
           // Stop session monitoring on logout
           sessionManager.stopMonitoring();
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           // Token refreshed, user is still authenticated
-          console.log('Token refreshed for user:', session.user.email);
+          console.log('useAuth: Token refreshed for user:', session.user.email);
           // Keep the current user, no need to refetch
         }
         
@@ -90,10 +94,13 @@ export function useAuth() {
 
   const logout = async () => {
     try {
+      console.log('useAuth: Logging out...');
       await signOut();
       setUser(null);
+      sessionManager.stopMonitoring();
+      console.log('useAuth: Logout complete');
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('useAuth: Error signing out:', error);
     }
   };
 
