@@ -34,8 +34,21 @@ export const getAllUsers = async (): Promise<User[]> => {
       .order('created_at', { ascending: false });
 
     if (error) {
+<<<<<<< Updated upstream
       console.error('Error fetching users from Supabase:', error);
       throw error;
+=======
+      console.error('Error fetching users from Supabase:', {
+        message: error.message || 'No message',
+        code: error.code || 'No code',
+        details: error.details || 'No details',
+        hint: error.hint || 'No hint',
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      });
+      // Don't throw, fall back to local database instead
+      console.log('Falling back to local database due to Supabase error');
+      return localUsers.getAllUsers();
+>>>>>>> Stashed changes
     }
 
     console.log('Successfully fetched users from Supabase:', data?.length || 0);
@@ -186,12 +199,49 @@ export const getUsersByRole = async (role: string): Promise<User[]> => {
 // Get current user from Supabase auth and sync with users table
 export const getCurrentSupabaseUser = async (): Promise<User | null> => {
   try {
+<<<<<<< Updated upstream
     // First get the authenticated user
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+=======
+    // First check if we have a valid session before calling getUser()
+    // getUser() can throw AuthSessionMissingError if there's no session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+>>>>>>> Stashed changes
     
-    if (authError) {
-      console.error('Error getting authenticated user:', authError);
+    if (sessionError || !session) {
+      console.log('No active session found:', sessionError?.message || 'Session is null');
       return null;
+    }
+    
+    // Use the user from the session if available, otherwise call getUser() to validate
+    let authUser = session.user;
+    
+    // If session user is missing email, try to get fresh user data
+    if (!authUser || !authUser.email) {
+      try {
+        const { data: { user: freshUser }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) {
+          // Handle AuthSessionMissingError specifically
+          if (authError.message?.includes('Auth session missing') || authError.name === 'AuthSessionMissingError') {
+            console.log('Session expired or invalid');
+            return null;
+          }
+          console.error('Error getting authenticated user:', authError);
+          return null;
+        }
+        
+        authUser = freshUser;
+      } catch (getUserError) {
+        // Handle AuthSessionMissingError thrown as exception
+        if (getUserError instanceof Error && 
+            (getUserError.message?.includes('Auth session missing') || 
+             getUserError.name === 'AuthSessionMissingError')) {
+          console.log('Session expired or invalid (exception)');
+          return null;
+        }
+        throw getUserError; // Re-throw if it's a different error
+      }
     }
     
     if (!authUser || !authUser.email) {
@@ -214,10 +264,27 @@ export const getCurrentSupabaseUser = async (): Promise<User | null> => {
     console.log('User profile found:', user.email);
     return user;
   } catch (error) {
+<<<<<<< Updated upstream
     console.error('Exception in getCurrentSupabaseUser:', {
       error,
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
+=======
+    // Handle AuthSessionMissingError specifically - this can be thrown by getUser()
+    if (error instanceof Error) {
+      if (error.message?.includes('Auth session missing') || 
+          error.name === 'AuthSessionMissingError' ||
+          error.constructor.name === 'AuthSessionMissingError') {
+        console.log('Session expired or invalid (caught in catch block)');
+        return null;
+      }
+    }
+    
+    console.error('Error in getCurrentSupabaseUser:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      errorName: error instanceof Error ? error.name : undefined
+>>>>>>> Stashed changes
     });
     return null;
   }

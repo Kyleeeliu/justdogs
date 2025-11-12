@@ -101,6 +101,9 @@ export interface Message {
   is_announcement: boolean;
   target_roles?: UserRole[]; // for announcements
   read_at?: string;
+  media_url?: string; // URL for image/video
+  media_type?: 'image' | 'video'; // Type of media attachment
+  media_thumbnail_url?: string; // Thumbnail for videos
   created_at: string;
   updated_at: string;
 }

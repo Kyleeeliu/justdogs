@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS messages (
   is_announcement BOOLEAN DEFAULT FALSE,
   target_roles TEXT[] DEFAULT '{}',
   read_at TIMESTAMP WITH TIME ZONE,
+  media_url TEXT,
+  media_type VARCHAR(50) CHECK (media_type IN ('image', 'video')),
+  media_thumbnail_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

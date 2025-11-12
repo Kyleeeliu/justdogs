@@ -31,6 +31,9 @@ export const createMessage = async (messageData: Omit<Message, 'id' | 'created_a
         is_announcement: messageData.is_announcement,
         target_roles: messageData.target_roles,
         read_at: messageData.read_at,
+        media_url: messageData.media_url,
+        media_type: messageData.media_type,
+        media_thumbnail_url: messageData.media_thumbnail_url,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }])

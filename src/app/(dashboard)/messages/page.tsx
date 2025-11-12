@@ -10,13 +10,22 @@ import {
   ChatBubbleLeftRightIcon,
   UserGroupIcon,
   ClockIcon,
-  XMarkIcon
+  XMarkIcon,
+  PhotoIcon,
+  VideoCameraIcon
 } from '@heroicons/react/24/outline';
 import { getCurrentUser } from '@/lib/auth/auth';
 import { Message, User, UserRole } from '@/types';
 import { formatDateTime } from '@/lib/utils';
 import { getAllUsers } from '@/lib/supabase/users';
 import { createMessage, getMessagesByUser, subscribeToMessages, markMessageAsRead } from '@/lib/supabase/messages';
+import { 
+  uploadMessageMedia, 
+  validateMediaFile, 
+  getMediaType,
+  createVideoThumbnail,
+  uploadVideoThumbnail
+} from '@/lib/supabase/storage';
 
 // Import getAllUsers directly from the database
 
@@ -33,60 +42,179 @@ export default function MessagesPage() {
     is_announcement: false,
     target_roles: [] as UserRole[]
   });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [availableRecipients, setAvailableRecipients] = useState<User[]>([]);
+  const [userNames, setUserNames] = useState<{[key: string]: string}>({});
+
+  const getAvailableRecipients = useCallback(async (user: User | null) => {
+    if (!user) return [];
+    
+    try {
+      const allUsers = await getAllUsers();
+      console.log('All users from Supabase:', allUsers);
+      console.log('Current user:', user);
+      
+      // Filter recipients based on role
+      let recipients: User[] = [];
+      
+      if (user.role === 'admin') {
+        // Admins can message everyone except themselves
+        recipients = allUsers.filter(u => u.id !== user.id);
+      } else if (user.role === 'trainer') {
+        // Trainers can message parents, behaviorists, and admins
+        recipients = allUsers.filter(u =>
+          u.id !== user.id && (u.role === 'parent' || u.role === 'behaviorist' || u.role === 'admin')
+        );
+      } else if (user.role === 'parent') {
+        // Parents can message everyone (trainers, behaviorists, admins, other parents)
+        recipients = allUsers.filter(u => u.id !== user.id);
+      } else if (user.role === 'behaviorist') {
+        // Behaviorists can message parents, trainers, and admins
+        recipients = allUsers.filter(u =>
+          u.id !== user.id && (u.role === 'parent' || u.role === 'trainer' || u.role === 'admin')
+        );
+      }
+      
+      console.log('Available recipients for', user.role + ':', recipients);
+      return recipients;
+    } catch (error) {
+      console.error('Error fetching recipients:', error);
+      return [];
+    }
+  }, []);
 
   useEffect(() => {
+    let mounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
+
     const loadUser = async () => {
+      // Set a timeout to ensure loading always completes
+      const timeoutId = setTimeout(() => {
+        if (mounted) {
+          console.warn('Loading timeout - forcing completion');
+          setLoading(false);
+          setMessages([]);
+          setAvailableRecipients([]);
+        }
+      }, 10000); // 10 second timeout
+
       try {
-        const user = await getCurrentUser();
+        console.log('Loading messages page...');
+        
+        // Load user with timeout
+        const userPromise = getCurrentUser();
+        const timeoutPromise = new Promise<User | null>((resolve) => {
+          setTimeout(() => resolve(null), 5000);
+        });
+        const user = await Promise.race([userPromise, timeoutPromise]);
+        
+        console.log('Current user:', user?.email || 'none');
+        
+        if (!mounted) {
+          clearTimeout(timeoutId);
+          return;
+        }
+        
         setCurrentUser(user);
         
-        // Load user names first
-        await loadUserNames();
+        // Load user names first (with timeout protection)
+        try {
+          const namePromise = loadUserNames();
+          const nameTimeout = new Promise<void>((resolve) => {
+            setTimeout(() => {
+              console.warn('loadUserNames timeout');
+              resolve();
+            }, 5000);
+          });
+          await Promise.race([namePromise, nameTimeout]);
+        } catch (nameError) {
+          console.error('Error loading user names:', nameError);
+        }
         
         if (user) {
           // Load messages from Supabase based on user role
           try {
-            const userMessages = await getMessagesByUser(user.id);
-            setMessages(userMessages);
+            console.log('Fetching messages for user:', user.id);
+            const messagePromise = getMessagesByUser(user.id);
+            const messageTimeout = new Promise<Message[]>((resolve) => {
+              setTimeout(() => {
+                console.warn('getMessagesByUser timeout');
+                resolve([]);
+              }, 5000);
+            });
+            const userMessages = await Promise.race([messagePromise, messageTimeout]);
+            console.log('Loaded messages:', userMessages.length);
+            if (mounted) {
+              setMessages(userMessages);
+            }
           } catch (messageError) {
             console.error('Error fetching messages by user:', messageError);
-            // Fallback to empty array if Supabase fails
-            setMessages([]);
+            if (mounted) {
+              setMessages([]);
+            }
           }
           
           // Load available recipients
           try {
-            const recipients = await getAvailableRecipients();
-            setAvailableRecipients(recipients);
+            const recipientPromise = getAvailableRecipients(user);
+            const recipientTimeout = new Promise<User[]>((resolve) => {
+              setTimeout(() => {
+                console.warn('getAvailableRecipients timeout');
+                resolve([]);
+              }, 5000);
+            });
+            const recipients = await Promise.race([recipientPromise, recipientTimeout]);
+            if (mounted) {
+              setAvailableRecipients(recipients);
+            }
           } catch (recipientError) {
             console.error('Error loading recipients:', recipientError);
-            setAvailableRecipients([]);
+            if (mounted) {
+              setAvailableRecipients([]);
+            }
           }
           
           // Subscribe to real-time message updates
           try {
-            const subscription = subscribeToMessages(user.id, (newMessage) => {
-              setMessages(prev => [newMessage, ...prev]);
+            subscription = subscribeToMessages(user.id, (newMessage) => {
+              if (mounted) {
+                setMessages(prev => [newMessage, ...prev]);
+              }
             });
-            
-            // Cleanup subscription on unmount
-            return () => {
-              subscription.unsubscribe();
-            };
           } catch (subscriptionError) {
             console.error('Error setting up message subscription:', subscriptionError);
           }
+        } else {
+          console.log('No user found, setting empty messages');
+          setMessages([]);
+          setAvailableRecipients([]);
         }
       } catch (error) {
         console.error('Error loading user:', error);
+        if (mounted) {
+          setMessages([]);
+          setAvailableRecipients([]);
+        }
       } finally {
-        setLoading(false);
+        clearTimeout(timeoutId);
+        if (mounted) {
+          setLoading(false);
+          console.log('Loading complete');
+        }
       }
     };
 
     loadUser();
+
+    return () => {
+      mounted = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const filteredMessages = messages.filter(message =>
@@ -96,8 +224,6 @@ export default function MessagesPage() {
 
   const unreadMessages = messages.filter(message => !message.read_at);
   const recentMessages = messages.slice(0, 5);
-
-  const [userNames, setUserNames] = useState<{[key: string]: string}>({});
 
   const getSenderName = (senderId: string) => {
     return userNames[senderId] || 'Unknown User';
@@ -135,12 +261,58 @@ export default function MessagesPage() {
     }));
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    const validation = validateMediaFile(file);
+    if (!validation.isValid) {
+      alert(validation.error);
+      return;
+    }
+
+    setSelectedFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFilePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!currentUser) return;
 
     try {
+      setUploadingFile(true);
+      
+      let mediaUrl: string | undefined;
+      let mediaType: 'image' | 'video' | undefined;
+      let mediaThumbnailUrl: string | undefined;
+
+      // Upload file if selected
+      if (selectedFile) {
+        mediaType = getMediaType(selectedFile);
+        mediaUrl = await uploadMessageMedia(selectedFile, currentUser.id, mediaType) || undefined;
+        
+        // Create thumbnail for videos
+        if (mediaType === 'video' && mediaUrl) {
+          const thumbnail = await createVideoThumbnail(selectedFile);
+          if (thumbnail) {
+            mediaThumbnailUrl = await uploadVideoThumbnail(thumbnail, currentUser.id, selectedFile.name) || undefined;
+          }
+        }
+      }
+
       // Create message in Supabase
       const newMessage = await createMessage({
         sender_id: currentUser.id,
@@ -149,6 +321,9 @@ export default function MessagesPage() {
         content: formData.content,
         is_announcement: formData.is_announcement,
         target_roles: formData.is_announcement ? formData.target_roles : undefined,
+        media_url: mediaUrl,
+        media_type: mediaType,
+        media_thumbnail_url: mediaThumbnailUrl,
       });
 
       // Update local state
@@ -160,11 +335,15 @@ export default function MessagesPage() {
         is_announcement: false,
         target_roles: [] as UserRole[]
       });
+      setSelectedFile(null);
+      setFilePreview(null);
       setShowNewMessageModal(false);
       alert('Message sent successfully!');
     } catch (error) {
       console.error('Error sending message:', error);
       alert('Failed to send message. Please try again.');
+    } finally {
+      setUploadingFile(false);
     }
   };
 
@@ -185,43 +364,6 @@ export default function MessagesPage() {
       }
     }
   };
-
-  const getAvailableRecipients = useCallback(async () => {
-    if (!currentUser) return [];
-    
-    try {
-      const allUsers = await getAllUsers();
-      console.log('All users from Supabase:', allUsers);
-      console.log('Current user:', currentUser);
-      
-      // Filter recipients based on role
-      let recipients: User[] = [];
-      
-      if (currentUser.role === 'admin') {
-        // Admins can message everyone except themselves
-        recipients = allUsers.filter(user => user.id !== currentUser.id);
-      } else if (currentUser.role === 'trainer') {
-        // Trainers can message parents, behaviorists, and admins
-        recipients = allUsers.filter(user =>
-          user.id !== currentUser.id && (user.role === 'parent' || user.role === 'behaviorist' || user.role === 'admin')
-        );
-      } else if (currentUser.role === 'parent') {
-        // Parents can message everyone (trainers, behaviorists, admins, other parents)
-        recipients = allUsers.filter(user => user.id !== currentUser.id);
-      } else if (currentUser.role === 'behaviorist') {
-        // Behaviorists can message parents, trainers, and admins
-        recipients = allUsers.filter(user =>
-          user.id !== currentUser.id && (user.role === 'parent' || user.role === 'trainer' || user.role === 'admin')
-        );
-      }
-      
-      console.log('Available recipients for', currentUser.role + ':', recipients);
-      return recipients;
-    } catch (error) {
-      console.error('Error fetching recipients:', error);
-      return [];
-    }
-  }, [currentUser]);
 
   // Debug: Show current users in database
   const debugUsers = async () => {
@@ -375,6 +517,23 @@ export default function MessagesPage() {
                   <p className="text-gray-700 line-clamp-2 leading-relaxed">
                     {message.content}
                   </p>
+                  
+                  {/* Media Indicator */}
+                  {message.media_url && (
+                    <div className="flex items-center mt-2 text-sm text-gray-500">
+                      {message.media_type === 'image' ? (
+                        <>
+                          <PhotoIcon className="h-4 w-4 mr-1" />
+                          <span>Image attached</span>
+                        </>
+                      ) : (
+                        <>
+                          <VideoCameraIcon className="h-4 w-4 mr-1" />
+                          <span>Video attached</span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -533,6 +692,67 @@ export default function MessagesPage() {
                 />
               </div>
 
+              {/* File Upload */}
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Attach Media (Optional)
+                </label>
+                <div className="flex items-center space-x-3">
+                  <label className="flex-1 cursor-pointer">
+                    <div className="flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-[rgb(0_32_96)] transition-colors bg-gray-50 hover:bg-gray-100">
+                      <PhotoIcon className="h-5 w-5 text-gray-400 mr-2" />
+                      <span className="text-sm text-gray-600 font-medium">
+                        {selectedFile ? selectedFile.name : 'Choose image or video'}
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      disabled={uploadingFile}
+                    />
+                  </label>
+                  {selectedFile && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRemoveFile}
+                      className="px-3"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  Supported formats: Images (JPEG, PNG, GIF, WebP) and Videos (MP4, MOV, AVI, WebM). Max size: 10MB
+                </p>
+                
+                {/* File Preview */}
+                {filePreview && selectedFile && (
+                  <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden">
+                    {selectedFile.type.startsWith('image/') ? (
+                      <img
+                        src={filePreview}
+                        alt="Preview"
+                        className="w-full h-48 object-cover"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center bg-gray-100 h-48">
+                        <div className="text-center">
+                          <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-600">Video: {selectedFile.name}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Action Buttons */}
               <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
                 <Button
@@ -546,8 +766,9 @@ export default function MessagesPage() {
                 <Button
                   type="submit"
                   className="px-6 py-2 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
+                  disabled={uploadingFile}
                 >
-                  Send Message
+                  {uploadingFile ? 'Uploading...' : 'Send Message'}
                 </Button>
               </div>
             </form>
@@ -620,6 +841,43 @@ export default function MessagesPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Media Display */}
+              {selectedMessage.media_url && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center">
+                    {selectedMessage.media_type === 'image' ? (
+                      <>
+                        <PhotoIcon className="h-5 w-5 mr-2" />
+                        Attached Image
+                      </>
+                    ) : (
+                      <>
+                        <VideoCameraIcon className="h-5 w-5 mr-2" />
+                        Attached Video
+                      </>
+                    )}
+                  </h3>
+                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                    {selectedMessage.media_type === 'image' ? (
+                      <img
+                        src={selectedMessage.media_url}
+                        alt="Message attachment"
+                        className="w-full max-h-[500px] object-contain"
+                      />
+                    ) : (
+                      <video
+                        controls
+                        poster={selectedMessage.media_thumbnail_url}
+                        className="w-full max-h-[500px]"
+                      >
+                        <source src={selectedMessage.media_url} type="video/mp4" />
+                        Your browser does not support the video tag.
+                      </video>
+                    )}
+                  </div>
+                </div>
+              )}
               
               <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
                 <Button
