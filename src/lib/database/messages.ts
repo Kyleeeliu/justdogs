@@ -21,6 +21,7 @@ const initializeDB = (): MessageDB => {
           subject: 'Welcome to Just Dogs!',
           content: 'Welcome to our platform! We\'re excited to help you with your dog training needs.',
           is_announcement: false,
+          message_type: 'text' as const,
           created_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
           updated_at: new Date(Date.now() - 86400000).toISOString(),
         },
@@ -31,6 +32,7 @@ const initializeDB = (): MessageDB => {
           subject: 'Training Session Request',
           content: 'Hi! I\'d like to schedule a training session for my dog. When would be a good time?',
           is_announcement: false,
+          message_type: 'text' as const,
           created_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
           updated_at: new Date(Date.now() - 172800000).toISOString(),
         },
@@ -54,6 +56,7 @@ const initializeDB = (): MessageDB => {
         subject: 'Welcome to Just Dogs!',
         content: 'Welcome to our platform! We\'re excited to help you with your dog training needs.',
         is_announcement: false,
+        message_type: 'text' as const,
         created_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
         updated_at: new Date(Date.now() - 86400000).toISOString(),
       },
@@ -64,6 +67,7 @@ const initializeDB = (): MessageDB => {
         subject: 'Training Session Request',
         content: 'Hi! I\'d like to schedule a training session for my dog. When would be a good time?',
         is_announcement: false,
+        message_type: 'text' as const,
         created_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
         updated_at: new Date(Date.now() - 172800000).toISOString(),
       },
@@ -82,10 +86,21 @@ const saveDB = () => {
   }
 };
 
-export const createMessage = (messageData: Omit<Message, 'id' | 'created_at' | 'updated_at'>): Message => {
+export const createMessage = (messageData: Omit<Message, 'id' | 'created_at' | 'updated_at' | 'delivered_at'> | any): Message => {
   const newMessage: Message = {
     id: (db.nextId++).toString(),
-    ...messageData,
+    sender_id: messageData.sender_id,
+    recipient_id: messageData.recipient_id,
+    conversation_id: messageData.conversation_id,
+    subject: messageData.subject || '',
+    content: messageData.content || '',
+    is_announcement: messageData.is_announcement || false,
+    target_roles: messageData.target_roles,
+    message_type: messageData.message_type || 'text',
+    attachments: messageData.attachments || [],
+    reply_to_id: messageData.reply_to_id,
+    read_at: messageData.read_at,
+    delivered_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -42,15 +43,15 @@ export default function DashboardLayout({
       console.log('Dashboard layout: User not authenticated after initialization, redirecting to login');
       console.log('Dashboard layout: State:', { initialized, loading, isAuthenticated, user });
       
-      // Use window.location for a hard redirect to ensure clean state
-      window.location.href = '/login';
+      // Use router.push for better navigation experience
+      router.push('/login');
     }
-  }, [initialized, loading, isAuthenticated, user]);
+  }, [initialized, loading, isAuthenticated, user, router]);
 
   const handleSignOut = async () => {
     try {
       await logout();
-      // Use hard redirect for logout
+      // Use hard redirect for logout to main page
       window.location.href = '/';
     } catch (error) {
       console.error('Error signing out:', error);
@@ -89,7 +90,16 @@ export default function DashboardLayout({
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
         <div className="fixed inset-y-0 left-0 flex w-72 sm:w-64 flex-col bg-white shadow-xl">
           <div className="flex h-16 items-center justify-between px-4">
-            <h1 className="text-lg sm:text-xl font-bold text-[rgb(0_32_96)]">🐕 Just Dogs</h1>
+            <div className="flex items-center space-x-2">
+              <Image
+                src="/images/icons/logo.png"
+                alt="Just Dogs Logo"
+                width={32}
+                height={32}
+                className="w-8 h-8"
+              />
+              <h1 className="text-lg sm:text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</h1>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -146,7 +156,16 @@ export default function DashboardLayout({
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
         <div className="flex flex-col flex-grow bg-white border-r border-gray-200">
           <div className="flex h-16 items-center px-4">
-            <h1 className="text-xl font-bold text-[rgb(0_32_96)]">🐕 Just Dogs</h1>
+            <div className="flex items-center space-x-2">
+              <Image
+                src="/images/icons/logo.png"
+                alt="Just Dogs Logo"
+                width={32}
+                height={32}
+                className="w-8 h-8"
+              />
+              <h1 className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</h1>
+            </div>
           </div>
           <nav className="flex-1 space-y-1 px-2 py-4">
             {navigation.map((item) => {

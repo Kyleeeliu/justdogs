@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User } from '@/types';
 import { getCurrentUser, signOut } from '@/lib/auth/auth';
-import { supabase } from '@/lib/supabase/client-browser';
+import { supabase } from '@/lib/supabase/client';
 import { sessionManager } from '@/lib/auth/sessionManager';
 
 export function useAuth() {

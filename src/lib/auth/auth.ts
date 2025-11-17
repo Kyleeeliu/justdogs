@@ -1,6 +1,6 @@
 // src/lib/auth/auth.ts
 
-import { supabase } from '../supabase/client-browser';
+import { supabase } from '../supabase/client';
 import { User, UserRole } from '@/types';
 import { getCurrentSupabaseUser } from '../supabase/users';
 
@@ -19,8 +19,6 @@ export async function signIn(email: string, password: string) {
       if (error) {
         console.error('Supabase signin error:', {
           message: error.message,
-          details: error.details,
-          hint: error.hint,
           code: error.code,
           error
         });
@@ -60,8 +58,6 @@ export async function signUp(email: string, password: string, fullName: string, 
       if (error) {
         console.error('Supabase signup error:', {
           message: error.message,
-          details: error.details,
-          hint: error.hint,
           code: error.code,
           error
         });
@@ -171,8 +167,6 @@ export async function updateUserProfile(userId: string, updates: Partial<User>):
     if (error) {
       console.error('Supabase profile update error:', {
         message: error.message,
-        details: error.details,
-        hint: error.hint,
         code: error.code,
         error
       });
@@ -180,7 +174,7 @@ export async function updateUserProfile(userId: string, updates: Partial<User>):
     }
 
     console.log('Updated Supabase user:', data);
-    return data;
+    return data as User;
 }
 
 // ... (Rest of the utility functions remain the same)

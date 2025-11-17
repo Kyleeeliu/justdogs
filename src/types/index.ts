@@ -96,13 +96,50 @@ export interface Message {
   id: string;
   sender_id: string;
   recipient_id?: string; // null for announcements
+  conversation_id?: string; // for chat-based messages
   subject: string;
   content: string;
   is_announcement: boolean;
   target_roles?: UserRole[]; // for announcements
+  message_type: 'text' | 'image' | 'file';
+  attachments?: MessageAttachment[];
+  reply_to_id?: string; // for replies
   read_at?: string;
+  delivered_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface MessageAttachment {
+  id: string;
+  message_id: string;
+  file_name: string;
+  file_url: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  participants: string[]; // array of user IDs
+  is_group: boolean;
+  group_name?: string;
+  group_avatar?: string;
+  last_message_id?: string;
+  last_message_at?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationParticipant {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  joined_at: string;
+  last_read_at?: string;
+  is_admin?: boolean;
 }
 
 export interface DashboardStats {
@@ -184,8 +221,19 @@ export interface SessionFormData {
 
 export interface MessageFormData {
   recipient_id?: string;
+  conversation_id?: string;
   subject: string;
   content: string;
   is_announcement: boolean;
   target_roles?: UserRole[];
+  message_type: 'text' | 'image' | 'file';
+  attachments?: File[];
+  reply_to_id?: string;
+}
+
+export interface ConversationFormData {
+  participants: string[];
+  is_group: boolean;
+  group_name?: string;
+  initial_message?: string;
 }

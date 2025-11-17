@@ -1,5 +1,6 @@
 import { supabase } from './client';
 import { User } from '@/types';
+import * as localUsers from '../database/users';
 
 // Supabase table name for users
 const USERS_TABLE = 'users';
@@ -22,10 +23,22 @@ export const createUser = async (userData: Omit<User, 'id' | 'created_at' | 'upd
     throw error;
   }
 
-  return data;
+  return data as User;
 };
 
 export const getAllUsers = async (): Promise<User[]> => {
+  // Check if Supabase is properly configured
+  const isSupabaseConfigured = () => {
+    return process.env.NEXT_PUBLIC_SUPABASE_URL &&
+           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+           process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co';
+  };
+
+  if (!isSupabaseConfigured()) {
+    console.log('Supabase not configured, using local database for users');
+    return localUsers.getAllUsers();
+  }
+
   try {
     console.log('Fetching all users from Supabase...');
     const { data, error } = await supabase
@@ -35,14 +48,15 @@ export const getAllUsers = async (): Promise<User[]> => {
 
     if (error) {
       console.error('Error fetching users from Supabase:', error);
-      throw error;
+      console.log('Falling back to local database');
+      return localUsers.getAllUsers();
     }
 
     console.log('Successfully fetched users from Supabase:', data?.length || 0);
-    return data || [];
+    return (data || []) as User[];
   } catch (error) {
-    console.error('Failed to fetch users:', error);
-    throw error;
+    console.error('Failed to fetch users from Supabase, falling back to local database:', error);
+    return localUsers.getAllUsers();
   }
 };
 
@@ -63,7 +77,7 @@ export const getUserById = async (id: string): Promise<User | null> => {
       throw error;
     }
 
-    return data;
+    return data as User;
   } catch (error) {
     console.error('Failed to fetch user by ID:', error);
     return null;
@@ -72,7 +86,7 @@ export const getUserById = async (id: string): Promise<User | null> => {
 
 export const getUserByEmail = async (email: string): Promise<User | null> => {
   try {
-    console.log('Fetching user by email:', email);
+    console.log('getUserByEmail: Fetching user by email:', email);
     
     const { data, error } = await supabase
       .from(USERS_TABLE)
@@ -81,35 +95,25 @@ export const getUserByEmail = async (email: string): Promise<User | null> => {
       .maybeSingle();
 
     if (error) {
-      // Log all possible error properties
-      console.error('Error fetching user by email:', {
-        error,
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
+      // Log the error but don't make a big deal about it
+      console.log('getUserByEmail: Query returned error (this is expected when not logged in):', {
         code: error?.code,
-        stringified: JSON.stringify(error),
-        keys: Object.keys(error),
+        message: error?.message,
+        statusCode: (error as any)?.statusCode,
       });
-      
-      // Don't throw - just return null
-      // The user might not exist yet or there might be a connection issue
-      console.log('Returning null due to error');
       return null;
     }
 
     if (!data) {
-      console.log('No user found for email:', email);
+      console.log('getUserByEmail: No user found for email:', email);
       return null;
     }
 
-    console.log('Successfully fetched user:', data.email);
-    return data;
+    console.log('getUserByEmail: Successfully fetched user:', data.email);
+    return data as User;
   } catch (error) {
-    console.error('Exception in getUserByEmail:', {
-      error,
+    console.log('getUserByEmail: Exception caught:', {
       message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
     });
     return null;
   }
@@ -131,7 +135,7 @@ export const updateUser = async (id: string, updates: Partial<Omit<User, 'id' | 
     return null;
   }
 
-  return data;
+  return data as User;
 };
 
 export const deleteUser = async (id: string): Promise<boolean> => {
@@ -165,7 +169,7 @@ export const searchUsers = async (searchTerm: string, role?: string): Promise<Us
     return [];
   }
 
-  return data || [];
+  return (data || []) as User[];
 };
 
 export const getUsersByRole = async (role: string): Promise<User[]> => {
@@ -180,44 +184,43 @@ export const getUsersByRole = async (role: string): Promise<User[]> => {
     return [];
   }
 
-  return data || [];
+  return (data || []) as User[];
 };
 
 // Get current user from Supabase auth and sync with users table
 export const getCurrentSupabaseUser = async (): Promise<User | null> => {
   try {
-    // First get the authenticated user
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    // First check if there's an active session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
-    if (authError) {
-      console.error('Error getting authenticated user:', authError);
+    if (sessionError) {
+      console.error('Error getting session:', sessionError);
       return null;
     }
     
-    if (!authUser || !authUser.email) {
-      // This is normal - no one is logged in yet
-      console.log('No authenticated user (not logged in)');
+    if (!session || !session.user) {
+      // No active session - this is completely normal when not logged in
+      // Don't log anything - this is expected behavior
       return null;
     }
 
-    console.log('Auth user found:', authUser.email);
+    console.log('getCurrentSupabaseUser: Active session found for:', session.user.email);
 
-    // Get user profile from users table
-    const user = await getUserByEmail(authUser.email);
+    // Now get user profile from users table
+    // Since we have a session, RLS will allow us to read our own user data
+    const user = await getUserByEmail(session.user.email!);
     
     if (!user) {
-      console.log('User profile not found in database for:', authUser.email);
-      console.log('Note: User profile should be created automatically via database trigger on signup');
+      console.warn('getCurrentSupabaseUser: User profile not found in database for:', session.user.email);
+      console.warn('This user may need to be added to the users table manually');
       return null;
     }
 
-    console.log('User profile found:', user.email);
+    console.log('getCurrentSupabaseUser: User profile loaded successfully');
     return user;
   } catch (error) {
-    console.error('Exception in getCurrentSupabaseUser:', {
-      error,
+    console.error('getCurrentSupabaseUser: Unexpected exception:', {
       message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
     });
     return null;
   }

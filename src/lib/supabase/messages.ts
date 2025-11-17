@@ -1,314 +1,172 @@
-import { supabase } from './client-browser';
-import { Message } from '@/types';
-import * as localMessages from '../database/messages';
+import { supabase } from './client';
+import { Message, User, UserRole } from '@/types';
 
-// Check if Supabase is properly configured
-const isSupabaseConfigured = () => {
-  return process.env.NEXT_PUBLIC_SUPABASE_URL &&
-         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-         process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co';
-};
-
-// Supabase table name for messages
-const MESSAGES_TABLE = 'messages';
-
-export const createMessage = async (messageData: Omit<Message, 'id' | 'created_at' | 'updated_at'>): Promise<Message> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for message creation');
-    return localMessages.createMessage(messageData);
-  }
-
-  console.log('Attempting to create message in Supabase:', messageData);
-
+// Get all users for recipient selection
+export const getAllUsersForMessaging = async (): Promise<User[]> => {
   try {
     const { data, error } = await supabase
-      .from(MESSAGES_TABLE)
-      .insert([{
+      .from('users')
+      .select('id, email, full_name, role, avatar_url')
+      .order('full_name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching users:', error);
+      return [];
+    }
+
+    return data as User[];
+  } catch (error) {
+    console.error('Error in getAllUsersForMessaging:', error);
+    return [];
+  }
+};
+
+// Search users by name or email
+export const searchUsers = async (searchTerm: string): Promise<User[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, role, avatar_url')
+      .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+      .order('full_name', { ascending: true })
+      .limit(10);
+
+    if (error) {
+      console.error('Error searching users:', error);
+      return [];
+    }
+
+    return data as User[];
+  } catch (error) {
+    console.error('Error in searchUsers:', error);
+    return [];
+  }
+};
+
+// Create a direct message
+export const createMessage = async (
+  messageData: {
+    sender_id: string;
+    recipient_id?: string;
+    subject?: string;
+    content: string;
+    is_announcement?: boolean;
+    target_roles?: UserRole[];
+  }
+): Promise<Message | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
         sender_id: messageData.sender_id,
-        recipient_id: messageData.recipient_id,
-        subject: messageData.subject,
+        recipient_id: messageData.recipient_id || null,
+        subject: messageData.subject || '',
         content: messageData.content,
-        is_announcement: messageData.is_announcement,
-        target_roles: messageData.target_roles,
-        read_at: messageData.read_at,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }])
-      .select()
+        is_announcement: messageData.is_announcement || false,
+        target_roles: messageData.target_roles || null,
+        message_type: 'text',
+        delivered_at: new Date().toISOString(),
+      })
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        )
+      `)
       .single();
 
     if (error) {
-      // Create comprehensive error log for messages
-      console.error('SUPABASE MESSAGE ERROR DETAILS:');
-      console.error('- Error Message:', error.message || 'No message');
-      console.error('- Error Code:', error.code || 'No code');
-      console.error('- Error Details:', error.details || 'No details');
-      console.error('- Error Hint:', error.hint || 'No hint');
-      console.error('- Raw Error Object:', error);
-      
-      // Try to stringify the error in multiple ways
-      try {
-        console.error('- Stringified Error:', JSON.stringify(error));
-      } catch (e) {
-        console.error('- Could not stringify error');
-      }
-      
-      try {
-        console.error('- Error with getOwnPropertyNames:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-      } catch (e) {
-        console.error('- Could not stringify error with getOwnPropertyNames');
-      }
-      
-      console.log('Falling back to local database due to Supabase error');
-      return localMessages.createMessage(messageData);
+      console.error('Error creating message:', error);
+      return null;
     }
 
-    console.log('Successfully created message in Supabase:', data?.id);
-    return data;
-  } catch (catchError) {
-    console.error('CATCH BLOCK MESSAGE ERROR DETAILS:');
-    console.error('- Catch Error Type:', typeof catchError);
-    console.error('- Catch Error Name:', catchError instanceof Error ? catchError.name : 'Not an Error object');
-    console.error('- Catch Error Message:', catchError instanceof Error ? catchError.message : String(catchError));
-    console.error('- Raw Catch Error:', catchError);
-    
-    if (catchError instanceof Error) {
-      console.error('- Catch Error Stack:', catchError.stack);
-    }
-    
-    console.log('Falling back to local database due to catch error');
-    return localMessages.createMessage(messageData);
+    return data as any;
+  } catch (error) {
+    console.error('Error in createMessage:', error);
+    return null;
   }
 };
 
-export const getAllMessages = async (): Promise<Message[]> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching messages:', error);
-    return [];
-  }
-
-  return data || [];
-};
-
-// Helper function to filter announcements by 48-hour retention
-const filterAnnouncementsByRetention = (announcements: Message[]): Message[] => {
-  const fortyEightHoursAgo = new Date();
-  fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-  
-  return announcements.filter(announcement => {
-    if (!announcement.is_announcement) return true;
-    
-    const messageDate = new Date(announcement.created_at);
-    return messageDate >= fortyEightHoursAgo;
-  });
-};
-
+// Get all messages for a user (direct messages + announcements)
 export const getMessagesByUser = async (userId: string): Promise<Message[]> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for message retrieval');
-    const userMessages = localMessages.getMessagesByUser(userId);
-    // Apply 48-hour retention filter to local messages too
-    return filterAnnouncementsByRetention(userMessages);
-  }
-
   try {
-    // First, get the user's role to filter announcements properly
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', userId)
-      .single();
-
-    if (userError) {
-      console.log('User not found in Supabase users table, falling back to local database');
-      const userMessages = localMessages.getMessagesByUser(userId);
-      return filterAnnouncementsByRetention(userMessages);
-    }
-
-    const userRole = userData?.role;
-
-    // Get messages where user is sender or recipient
+    // Get direct messages where user is sender or recipient
     const { data: directMessages, error: directError } = await supabase
-      .from(MESSAGES_TABLE)
-      .select('*')
+      .from('messages')
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        )
+      `)
       .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+      .eq('is_announcement', false)
       .order('created_at', { ascending: false });
 
     if (directError) {
       console.error('Error fetching direct messages:', directError);
     }
 
-    // Get announcements from the last 48 hours only
+    // Get announcements from last 48 hours
     const fortyEightHoursAgo = new Date();
     fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-    
-    console.log('Fetching announcements for user:', userId);
-    console.log('Current time:', new Date().toISOString());
-    console.log('48 hours ago cutoff:', fortyEightHoursAgo.toISOString());
-    
+
     const { data: announcements, error: announcementError } = await supabase
-      .from(MESSAGES_TABLE)
-      .select('*')
+      .from('messages')
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        )
+      `)
       .eq('is_announcement', true)
       .gte('created_at', fortyEightHoursAgo.toISOString())
       .order('created_at', { ascending: false });
-
-    console.log('Raw announcements from Supabase:', announcements?.length || 0);
-    if (announcements) {
-      announcements.forEach(ann => {
-        console.log(`Announcement: ${ann.subject} - Created: ${ann.created_at}`);
-      });
-    }
 
     if (announcementError) {
       console.error('Error fetching announcements:', announcementError);
     }
 
-    // Filter announcements based on target roles
-    const filteredAnnouncements = (announcements || []).filter(announcement => {
-      // If no target roles specified, show to everyone
-      if (!announcement.target_roles || announcement.target_roles.length === 0) {
-        return true;
-      }
-      // If user role matches target roles, show the announcement
-      return userRole && announcement.target_roles.includes(userRole);
-    });
+    // Combine and deduplicate
+    const allMessages = [...(directMessages || []), ...(announcements || [])];
+    const uniqueMessages = Array.from(
+      new Map(allMessages.map(msg => [msg.id, msg])).values()
+    );
 
-    // Combine and sort all messages
-    const allMessages = [...(directMessages || []), ...filteredAnnouncements];
-    allMessages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    return allMessages;
+    return uniqueMessages.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ) as any;
   } catch (error) {
-    console.error('Supabase message retrieval failed, falling back to local database:', error);
-    const userMessages = localMessages.getMessagesByUser(userId);
-    // Apply 48-hour retention filter to fallback messages too
-    return filterAnnouncementsByRetention(userMessages);
-  }
-};
-
-export const getMessagesByRecipient = async (recipientId: string): Promise<Message[]> => {
-  try {
-    // Get direct messages and announcements from the last 48 hours
-    const fortyEightHoursAgo = new Date();
-    fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-    
-    const { data, error } = await supabase
-      .from(MESSAGES_TABLE)
-      .select('*')
-      .or(`recipient_id.eq.${recipientId},and(is_announcement.eq.true,created_at.gte.${fortyEightHoursAgo.toISOString()})`)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching messages by recipient:', error);
-      return [];
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error('Error in getMessagesByRecipient:', error);
+    console.error('Error in getMessagesByUser:', error);
     return [];
   }
 };
 
-export const getMessagesBySender = async (senderId: string): Promise<Message[]> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .eq('sender_id', senderId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching messages by sender:', error);
-    return [];
-  }
-
-  return data || [];
-};
-
-export const getMessageById = async (id: string): Promise<Message | null> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching message by ID:', error);
-    return null;
-  }
-
-  return data;
-};
-
-export const updateMessage = async (id: string, updates: Partial<Omit<Message, 'id' | 'created_at'>>): Promise<Message | null> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error updating message:', error);
-    return null;
-  }
-
-  return data;
-};
-
-export const deleteMessage = async (id: string): Promise<boolean> => {
-  const { error } = await supabase
-    .from(MESSAGES_TABLE)
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('Error deleting message:', error);
-    return false;
-  }
-
-  return true;
-};
-
-export const searchMessages = async (searchTerm: string, userId?: string): Promise<Message[]> => {
-  let query = supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .or(`subject.ilike.%${searchTerm}%,content.ilike.%${searchTerm}%`);
-
-  if (userId) {
-    query = query.or(`sender_id.eq.${userId},recipient_id.eq.${userId},is_announcement.eq.true`);
-  }
-
-  const { data, error } = await query.order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error searching messages:', error);
-    return [];
-  }
-
-  return data || [];
-};
-
+// Get unread messages for a user
 export const getUnreadMessages = async (userId: string): Promise<Message[]> => {
   try {
-    // Get unread direct messages and unread announcements from the last 48 hours
-    const fortyEightHoursAgo = new Date();
-    fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-    
     const { data, error } = await supabase
-      .from(MESSAGES_TABLE)
-      .select('*')
-      .or(`recipient_id.eq.${userId},and(is_announcement.eq.true,created_at.gte.${fortyEightHoursAgo.toISOString()})`)
+      .from('messages')
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        )
+      `)
+      .or(`recipient_id.eq.${userId},is_announcement.eq.true`)
+      .neq('sender_id', userId)
       .is('read_at', null)
       .order('created_at', { ascending: false });
 
@@ -317,49 +175,97 @@ export const getUnreadMessages = async (userId: string): Promise<Message[]> => {
       return [];
     }
 
-    return data || [];
+    return data as any;
   } catch (error) {
     console.error('Error in getUnreadMessages:', error);
     return [];
   }
 };
 
-export const markMessageAsRead = async (messageId: string): Promise<Message | null> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for marking message as read');
-    return localMessages.markMessageAsRead(messageId) || null;
-  }
-
+// Mark message as read
+export const markMessageAsRead = async (messageId: string): Promise<void> => {
   try {
-    return await updateMessage(messageId, { read_at: new Date().toISOString() });
+    await supabase
+      .from('messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', messageId);
   } catch (error) {
-    console.error('Supabase mark as read failed, falling back to local database:', error);
-    return localMessages.markMessageAsRead(messageId) || null;
+    console.error('Error marking message as read:', error);
   }
 };
 
-// Real-time subscription for new messages
-export const subscribeToMessages = (userId: string, callback: (message: Message) => void) => {
+// Get unread message count for a user
+export const getUnreadMessageCount = async (userId: string): Promise<number> => {
+  try {
+    const { count } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .or(`recipient_id.eq.${userId},is_announcement.eq.true`)
+      .neq('sender_id', userId)
+      .is('read_at', null);
+
+    return count || 0;
+  } catch (error) {
+    console.error('Error getting unread count:', error);
+    return 0;
+  }
+};
+
+// Subscribe to new messages for a user
+export const subscribeToMessages = (
+  userId: string,
+  callback: (message: Message) => void
+) => {
   try {
     return supabase
-      .channel('messages')
-      .on('postgres_changes',
+      .channel(`user-messages:${userId}`)
+      .on(
+        'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
-          table: MESSAGES_TABLE,
-          filter: `or(sender_id.eq.${userId},recipient_id.eq.${userId},is_announcement.eq.true)`
+          table: 'messages',
         },
-        (payload) => {
-          callback(payload.new as Message);
+        async (payload) => {
+          const message = payload.new as any;
+          
+          // Check if this message is relevant to the user
+          const isRelevant = 
+            message.sender_id === userId ||
+            message.recipient_id === userId ||
+            message.is_announcement;
+
+          if (isRelevant) {
+            // Fetch complete message with sender info
+            const { data } = await supabase
+              .from('messages')
+              .select(`
+                *,
+                sender:sender_id (
+                  id,
+                  full_name,
+                  email,
+                  avatar_url
+                )
+              `)
+              .eq('id', message.id)
+              .single();
+
+            if (data) {
+              callback(data as any);
+            }
+          }
         }
       )
       .subscribe();
   } catch (error) {
     console.error('Error setting up message subscription:', error);
-    // Return a dummy subscription object
     return {
       unsubscribe: () => {}
     };
   }
 };
+
+// Legacy exports for compatibility
+export const sendMessage = createMessage;
+export const createAnnouncement = createMessage;

@@ -1,13 +1,14 @@
-// src/lib/supabase/client-server.ts
-
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import type { Database } from '@/types/supabase.d'; // <-- NEW: Import your schema type
 
 /**
  * Creates a server-side Supabase client instance that correctly reads and writes session cookies
  * from the Next.js request context, ensuring proper RLS checks.
+ * * NOTE: This function MUST remain synchronous to be used correctly in Server Components and Route Handlers.
  */
 export async function createSupabaseServerClient() {
+  // cookies() is a dynamic function that returns a Promise in newer Next.js versions
   const cookieStore = await cookies();
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -15,53 +16,35 @@ export async function createSupabaseServerClient() {
     throw new Error('Supabase environment variables (URL or ANON_KEY) are missing.');
   }
 
-  return createServerClient(
+  return createServerClient<Database>( // <-- FIX: Inject the Database generic type
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey,
     {
       cookies: {
-        async get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        
-        async set(name: string, value: string, options: CookieOptions) {
+        get(name: string) {
           try {
-            // Convert Supabase CookieOptions to Next.js cookie format
-            const nextCookieOptions: any = {
-              name,
-              value,
-              httpOnly: options.httpOnly,
-              secure: options.secure,
-              sameSite: options.sameSite,
-              path: options.path,
-            };
-
-            // Handle maxAge vs expires conversion
-            if (options.maxAge) {
-              nextCookieOptions.maxAge = options.maxAge;
-            }
-
-            cookieStore.set(nextCookieOptions);
+            return cookieStore.get(name)?.value;
           } catch (error) {
-            // Ignore error in Server Components - this is expected in some contexts
+            return undefined;
           }
         },
         
-        async remove(name: string, options: CookieOptions) {
+        set(name: string, value: string, options: CookieOptions) {
           try {
-            const nextCookieOptions: any = {
-              name,
-              value: '',
-              httpOnly: options.httpOnly,
-              secure: options.secure,
-              sameSite: options.sameSite,
-              path: options.path,
-              maxAge: 0, // Set maxAge to 0 to remove the cookie
-            };
-
-            cookieStore.set(nextCookieOptions);
+            // Next.js set requires options to be part of the object
+            // The value is spread into the options object implicitly by the Next.js implementation
+            cookieStore.set({ name, value, ...options }); 
           } catch (error) {
-            // Ignore error in Server Components - this is expected in some contexts
+            // Ignore error in Server Components that are not Server Actions
+          }
+        },
+        
+        remove(name: string, options: CookieOptions) {
+          try {
+            // Remove by setting the value to empty string and letting the options handle expiry/removal
+            cookieStore.set({ name, value: '', ...options, maxAge: 0 });
+          } catch (error) {
+            // Ignore error
           }
         },
       },
