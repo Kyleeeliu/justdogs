@@ -205,7 +205,8 @@ export default function ServicesPage() {
 
       {/* Dog Assessment Bot Modal */}
       {showAssessmentBot && (
-        <DogAssessmentBot 
+        <DogAssessmentBot
+          isOpen={showAssessmentBot}
           onComplete={handleAssessmentComplete}
           onClose={() => setShowAssessmentBot(false)}
         />

@@ -1,317 +1,536 @@
-import { supabase } from './client-browser';
-import { Message } from '@/types';
-import * as localMessages from '../database/messages';
+import { supabase } from './client';
+import { Message, Conversation, User, MessageAttachment } from '@/types';
 
-// Check if Supabase is properly configured
-const isSupabaseConfigured = () => {
-  return process.env.NEXT_PUBLIC_SUPABASE_URL &&
-         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-         process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co';
-};
-
-// Supabase table name for messages
 const MESSAGES_TABLE = 'messages';
+const CONVERSATIONS_TABLE = 'conversations';
+const PARTICIPANTS_TABLE = 'conversation_participants';
+const ATTACHMENTS_TABLE = 'message_attachments';
 
-export const createMessage = async (messageData: Omit<Message, 'id' | 'created_at' | 'updated_at'>): Promise<Message> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for message creation');
-    return localMessages.createMessage(messageData);
-  }
-
-  console.log('Attempting to create message in Supabase:', messageData);
-
+// Get all users for recipient selection
+export const getAllUsersForMessaging = async (): Promise<User[]> => {
   try {
     const { data, error } = await supabase
-      .from(MESSAGES_TABLE)
-      .insert([{
-        sender_id: messageData.sender_id,
-        recipient_id: messageData.recipient_id,
-        subject: messageData.subject,
-        content: messageData.content,
-        is_announcement: messageData.is_announcement,
-        target_roles: messageData.target_roles,
-        read_at: messageData.read_at,
-        media_url: messageData.media_url,
-        media_type: messageData.media_type,
-        media_thumbnail_url: messageData.media_thumbnail_url,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }])
+      .from('users')
+      .select('id, email, full_name, role, avatar_url')
+      .order('full_name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching users:', error);
+      return [];
+    }
+
+    return data as User[];
+  } catch (error) {
+    console.error('Error in getAllUsersForMessaging:', error);
+    return [];
+  }
+};
+
+// Search users by name or email
+export const searchUsers = async (searchTerm: string): Promise<User[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, full_name, role, avatar_url')
+      .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+      .order('full_name', { ascending: true })
+      .limit(10);
+
+    if (error) {
+      console.error('Error searching users:', error);
+      return [];
+    }
+
+    return data as User[];
+  } catch (error) {
+    console.error('Error in searchUsers:', error);
+    return [];
+  }
+};
+
+// Get or create a conversation between two users
+export const getOrCreateConversation = async (userId1: string, userId2: string): Promise<string> => {
+  try {
+    // First, try to find existing conversation between these two users
+    const { data: existingConversations, error: fetchError } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select(`
+        conversation_id,
+        conversations:conversation_id (
+          id,
+          is_group
+        )
+      `)
+      .eq('user_id', userId1);
+
+    if (fetchError) {
+      console.error('Error fetching conversations:', fetchError);
+      throw fetchError;
+    }
+
+    // Find a non-group conversation that includes both users
+    for (const participant of existingConversations || []) {
+      const conv = participant.conversations as any;
+      if (!conv.is_group) {
+        // Check if userId2 is in this conversation
+        const { data: otherParticipants, error: participantsError } = await supabase
+          .from(PARTICIPANTS_TABLE)
+          .select('user_id')
+          .eq('conversation_id', participant.conversation_id);
+
+        if (!participantsError && otherParticipants) {
+          const participantIds = otherParticipants.map(p => p.user_id);
+          if (participantIds.includes(userId2) && participantIds.length === 2) {
+            return participant.conversation_id;
+          }
+        }
+      }
+    }
+
+    // No existing conversation found, create new one
+    const { data: newConversation, error: createError } = await supabase
+      .from(CONVERSATIONS_TABLE)
+      .insert({
+        is_group: false,
+        created_by: userId1,
+      })
+>>>>>>> c3fe23699ea5bbcecdb99ad9f7bdcf8c5964d504
       .select()
       .single();
 
-    if (error) {
-      // Create comprehensive error log for messages
-      console.error('SUPABASE MESSAGE ERROR DETAILS:');
-      console.error('- Error Message:', error.message || 'No message');
-      console.error('- Error Code:', error.code || 'No code');
-      console.error('- Error Details:', error.details || 'No details');
-      console.error('- Error Hint:', error.hint || 'No hint');
-      console.error('- Raw Error Object:', error);
-      
-      // Try to stringify the error in multiple ways
-      try {
-        console.error('- Stringified Error:', JSON.stringify(error));
-      } catch (e) {
-        console.error('- Could not stringify error');
-      }
-      
-      try {
-        console.error('- Error with getOwnPropertyNames:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-      } catch (e) {
-        console.error('- Could not stringify error with getOwnPropertyNames');
-      }
-      
-      console.log('Falling back to local database due to Supabase error');
-      return localMessages.createMessage(messageData);
+    if (createError || !newConversation) {
+      console.error('Error creating conversation:', createError);
+      throw createError;
     }
 
-    console.log('Successfully created message in Supabase:', data?.id);
-    return data;
-  } catch (catchError) {
-    console.error('CATCH BLOCK MESSAGE ERROR DETAILS:');
-    console.error('- Catch Error Type:', typeof catchError);
-    console.error('- Catch Error Name:', catchError instanceof Error ? catchError.name : 'Not an Error object');
-    console.error('- Catch Error Message:', catchError instanceof Error ? catchError.message : String(catchError));
-    console.error('- Raw Catch Error:', catchError);
-    
-    if (catchError instanceof Error) {
-      console.error('- Catch Error Stack:', catchError.stack);
+    // Add both participants
+    const { error: participantsError } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .insert([
+        { conversation_id: newConversation.id, user_id: userId1 },
+        { conversation_id: newConversation.id, user_id: userId2 },
+      ]);
+
+    if (participantsError) {
+      console.error('Error adding participants:', participantsError);
+      throw participantsError;
     }
-    
-    console.log('Falling back to local database due to catch error');
-    return localMessages.createMessage(messageData);
+
+    return newConversation.id;
+  } catch (error) {
+    console.error('Error in getOrCreateConversation:', error);
+    throw error;
   }
 };
 
-export const getAllMessages = async (): Promise<Message[]> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .order('created_at', { ascending: false });
+// Get all conversations for a user
+export const getUserConversations = async (userId: string): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select(`
+        conversation_id,
+        last_read_at,
+        conversations:conversation_id (
+          id,
+          is_group,
+          group_name,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq('user_id', userId)
+      .order('conversation_id', { ascending: false });
 
-  if (error) {
-    console.error('Error fetching messages:', error);
+    if (error) {
+      console.error('Error fetching user conversations:', error);
+      return [];
+    }
+
+    // For each conversation, get the other participants and last message
+    const conversationsWithDetails = await Promise.all(
+      (data || []).map(async (item) => {
+        const conversation = item.conversations as any;
+        
+        // Get other participants
+        const { data: participants } = await supabase
+          .from(PARTICIPANTS_TABLE)
+          .select(`
+            user_id,
+            users:user_id (
+              id,
+              full_name,
+              email,
+              avatar_url,
+              role
+            )
+          `)
+          .eq('conversation_id', conversation.id)
+          .neq('user_id', userId);
+
+        // Get last message
+        const { data: lastMessage } = await supabase
+          .from(MESSAGES_TABLE)
+          .select('*')
+          .eq('conversation_id', conversation.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        // Get unread count
+        const { count: unreadCount } = await supabase
+          .from(MESSAGES_TABLE)
+          .select('*', { count: 'exact', head: true })
+          .eq('conversation_id', conversation.id)
+          .neq('sender_id', userId)
+          .is('read_at', null);
+
+        return {
+          ...conversation,
+          participants: participants?.map(p => p.users) || [],
+          lastMessage,
+          unreadCount: unreadCount || 0,
+          last_read_at: item.last_read_at,
+        };
+      })
+    );
+
+    return conversationsWithDetails;
+  } catch (error) {
+    console.error('Error in getUserConversations:', error);
     return [];
   }
-
-  return data || [];
 };
 
-// Helper function to filter announcements by 48-hour retention
-const filterAnnouncementsByRetention = (announcements: Message[]): Message[] => {
-  const fortyEightHoursAgo = new Date();
-  fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-  
-  return announcements.filter(announcement => {
-    if (!announcement.is_announcement) return true;
-    
-    const messageDate = new Date(announcement.created_at);
-    return messageDate >= fortyEightHoursAgo;
-  });
-};
-
-export const getMessagesByUser = async (userId: string): Promise<Message[]> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for message retrieval');
-    const userMessages = localMessages.getMessagesByUser(userId);
-    // Apply 48-hour retention filter to local messages too
-    return filterAnnouncementsByRetention(userMessages);
-  }
-
+// Get messages in a conversation
+export const getConversationMessages = async (conversationId: string): Promise<Message[]> => {
   try {
-    // First, get the user's role to filter announcements properly
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', userId)
+    const { data, error } = await supabase
+      .from(MESSAGES_TABLE)
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        ),
+        attachments:message_attachments (
+          id,
+          file_name,
+          file_url,
+          file_type,
+          file_size,
+          created_at
+        )
+      `)
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching conversation messages:', error);
+      return [];
+    }
+
+    return data as any;
+  } catch (error) {
+    console.error('Error in getConversationMessages:', error);
+    return [];
+  }
+};
+
+// Send a message
+export const sendMessage = async (
+  conversationId: string,
+  senderId: string,
+  content: string,
+  attachments?: File[]
+): Promise<Message | null> => {
+  try {
+    // Create the message
+    const { data: message, error: messageError } = await supabase
+      .from(MESSAGES_TABLE)
+      .insert({
+        conversation_id: conversationId,
+        sender_id: senderId,
+        content,
+        message_type: attachments && attachments.length > 0 ? 'image' : 'text',
+        delivered_at: new Date().toISOString(),
+      })
+      .select()
       .single();
 
-    if (userError) {
-      console.log('User not found in Supabase users table, falling back to local database');
-      const userMessages = localMessages.getMessagesByUser(userId);
-      return filterAnnouncementsByRetention(userMessages);
+    if (messageError || !message) {
+      console.error('Error creating message:', messageError);
+      return null;
     }
 
-    const userRole = userData?.role;
+    // Upload attachments if any
+    if (attachments && attachments.length > 0) {
+      const uploadedAttachments = await uploadAttachments(message.id, attachments);
+      return {
+        ...message,
+        attachments: uploadedAttachments,
+      } as any;
+    }
 
-    // Get messages where user is sender or recipient
-    const { data: directMessages, error: directError } = await supabase
+    return message as any;
+  } catch (error) {
+    console.error('Error in sendMessage:', error);
+    return null;
+  }
+};
+
+// Upload file attachments
+export const uploadAttachments = async (messageId: string, files: File[]): Promise<MessageAttachment[]> => {
+  const attachments: MessageAttachment[] = [];
+
+  for (const file of files) {
+    try {
+      // Upload file to Supabase Storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${messageId}/${fileName}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('message-attachments')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Error uploading file:', uploadError);
+        continue;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('message-attachments')
+        .getPublicUrl(filePath);
+
+      // Save attachment record
+      const { data: attachment, error: attachmentError } = await supabase
+        .from(ATTACHMENTS_TABLE)
+        .insert({
+          message_id: messageId,
+          file_name: file.name,
+          file_url: urlData.publicUrl,
+          file_type: file.type,
+          file_size: file.size,
+        })
+        .select()
+        .single();
+
+      if (!attachmentError && attachment) {
+        attachments.push(attachment as MessageAttachment);
+      }
+    } catch (error) {
+      console.error('Error processing attachment:', error);
+    }
+  }
+
+  return attachments;
+};
+
+// Mark message as read
+export const markMessageAsRead = async (messageId: string): Promise<void> => {
+  try {
+    await supabase
       .from(MESSAGES_TABLE)
-      .select('*')
-      .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', messageId);
+  } catch (error) {
+    console.error('Error marking message as read:', error);
+  }
+};
+
+// Mark all messages in a conversation as read
+export const markConversationAsRead = async (conversationId: string, userId: string): Promise<void> => {
+  try {
+    // Mark all unread messages as read
+    await supabase
+      .from(MESSAGES_TABLE)
+      .update({ read_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', userId)
+      .is('read_at', null);
+
+    // Update last_read_at for the participant
+    await supabase
+      .from(PARTICIPANTS_TABLE)
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId);
+  } catch (error) {
+    console.error('Error marking conversation as read:', error);
+  }
+};
+
+// Subscribe to new messages in a conversation
+export const subscribeToConversation = (
+  conversationId: string,
+  callback: (message: Message) => void
+) => {
+  return supabase
+    .channel(`conversation:${conversationId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: MESSAGES_TABLE,
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      async (payload) => {
+        // Fetch the complete message with sender info
+        const { data } = await supabase
+          .from(MESSAGES_TABLE)
+          .select(`
+            *,
+            sender:sender_id (
+              id,
+              full_name,
+              email,
+              avatar_url
+            )
+          `)
+          .eq('id', payload.new.id)
+          .single();
+
+        if (data) {
+          callback(data as any);
+        }
+      }
+    )
+    .subscribe();
+};
+
+// Get unread message count for a user
+export const getUnreadMessageCount = async (userId: string): Promise<number> => {
+  try {
+    // Get all conversations the user is part of
+    const { data: participantData } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select('conversation_id')
+      .eq('user_id', userId);
+
+    if (!participantData) return 0;
+
+    const conversationIds = participantData.map(p => p.conversation_id);
+
+    // Count unread messages in those conversations
+    const { count } = await supabase
+      .from(MESSAGES_TABLE)
+      .select('*', { count: 'exact', head: true })
+      .in('conversation_id', conversationIds)
+      .neq('sender_id', userId)
+      .is('read_at', null);
+
+    return count || 0;
+  } catch (error) {
+    console.error('Error getting unread count:', error);
+    return 0;
+  }
+};
+
+// Legacy function - Get all messages for a user (direct messages + announcements)
+export const getMessagesByUser = async (userId: string): Promise<Message[]> => {
+  try {
+    // Get all conversations the user is part of
+    const { data: participantData } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select('conversation_id')
+      .eq('user_id', userId);
+
+    if (!participantData) return [];
+
+    const conversationIds = participantData.map(p => p.conversation_id);
+
+    // Get all messages from those conversations
+    const { data: messages, error } = await supabase
+      .from(MESSAGES_TABLE)
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        ),
+        attachments:message_attachments (
+          id,
+          file_name,
+          file_url,
+          file_type,
+          file_size,
+          created_at
+        )
+      `)
+      .in('conversation_id', conversationIds)
       .order('created_at', { ascending: false });
 
-    if (directError) {
-      console.error('Error fetching direct messages:', directError);
+    if (error) {
+      console.error('Error fetching messages by user:', error);
+      return [];
     }
 
-    // Get announcements from the last 48 hours only
+    // Also get announcements from last 48 hours
     const fortyEightHoursAgo = new Date();
     fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-    
-    console.log('Fetching announcements for user:', userId);
-    console.log('Current time:', new Date().toISOString());
-    console.log('48 hours ago cutoff:', fortyEightHoursAgo.toISOString());
-    
-    const { data: announcements, error: announcementError } = await supabase
+
+    const { data: announcements } = await supabase
       .from(MESSAGES_TABLE)
-      .select('*')
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        )
+      `)
       .eq('is_announcement', true)
       .gte('created_at', fortyEightHoursAgo.toISOString())
       .order('created_at', { ascending: false });
 
-    console.log('Raw announcements from Supabase:', announcements?.length || 0);
-    if (announcements) {
-      announcements.forEach(ann => {
-        console.log(`Announcement: ${ann.subject} - Created: ${ann.created_at}`);
-      });
-    }
+    // Combine and deduplicate
+    const allMessages = [...(messages || []), ...(announcements || [])];
+    const uniqueMessages = Array.from(
+      new Map(allMessages.map(msg => [msg.id, msg])).values()
+    );
 
-    if (announcementError) {
-      console.error('Error fetching announcements:', announcementError);
-    }
-
-    // Filter announcements based on target roles
-    const filteredAnnouncements = (announcements || []).filter(announcement => {
-      // If no target roles specified, show to everyone
-      if (!announcement.target_roles || announcement.target_roles.length === 0) {
-        return true;
-      }
-      // If user role matches target roles, show the announcement
-      return userRole && announcement.target_roles.includes(userRole);
-    });
-
-    // Combine and sort all messages
-    const allMessages = [...(directMessages || []), ...filteredAnnouncements];
-    allMessages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    return allMessages;
+    return uniqueMessages.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ) as any;
   } catch (error) {
-    console.error('Supabase message retrieval failed, falling back to local database:', error);
-    const userMessages = localMessages.getMessagesByUser(userId);
-    // Apply 48-hour retention filter to fallback messages too
-    return filterAnnouncementsByRetention(userMessages);
-  }
-};
-
-export const getMessagesByRecipient = async (recipientId: string): Promise<Message[]> => {
-  try {
-    // Get direct messages and announcements from the last 48 hours
-    const fortyEightHoursAgo = new Date();
-    fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-    
-    const { data, error } = await supabase
-      .from(MESSAGES_TABLE)
-      .select('*')
-      .or(`recipient_id.eq.${recipientId},and(is_announcement.eq.true,created_at.gte.${fortyEightHoursAgo.toISOString()})`)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching messages by recipient:', error);
-      return [];
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error('Error in getMessagesByRecipient:', error);
+    console.error('Error in getMessagesByUser:', error);
     return [];
   }
 };
 
-export const getMessagesBySender = async (senderId: string): Promise<Message[]> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .eq('sender_id', senderId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching messages by sender:', error);
-    return [];
-  }
-
-  return data || [];
-};
-
-export const getMessageById = async (id: string): Promise<Message | null> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching message by ID:', error);
-    return null;
-  }
-
-  return data;
-};
-
-export const updateMessage = async (id: string, updates: Partial<Omit<Message, 'id' | 'created_at'>>): Promise<Message | null> => {
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error updating message:', error);
-    return null;
-  }
-
-  return data;
-};
-
-export const deleteMessage = async (id: string): Promise<boolean> => {
-  const { error } = await supabase
-    .from(MESSAGES_TABLE)
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('Error deleting message:', error);
-    return false;
-  }
-
-  return true;
-};
-
-export const searchMessages = async (searchTerm: string, userId?: string): Promise<Message[]> => {
-  let query = supabase
-    .from(MESSAGES_TABLE)
-    .select('*')
-    .or(`subject.ilike.%${searchTerm}%,content.ilike.%${searchTerm}%`);
-
-  if (userId) {
-    query = query.or(`sender_id.eq.${userId},recipient_id.eq.${userId},is_announcement.eq.true`);
-  }
-
-  const { data, error } = await query.order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error searching messages:', error);
-    return [];
-  }
-
-  return data || [];
-};
-
+// Get unread messages for a user
 export const getUnreadMessages = async (userId: string): Promise<Message[]> => {
   try {
-    // Get unread direct messages and unread announcements from the last 48 hours
-    const fortyEightHoursAgo = new Date();
-    fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-    
+    const { data: participantData } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select('conversation_id')
+      .eq('user_id', userId);
+
+    if (!participantData) return [];
+
+    const conversationIds = participantData.map(p => p.conversation_id);
+
     const { data, error } = await supabase
       .from(MESSAGES_TABLE)
-      .select('*')
-      .or(`recipient_id.eq.${userId},and(is_announcement.eq.true,created_at.gte.${fortyEightHoursAgo.toISOString()})`)
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        )
+      `)
+      .in('conversation_id', conversationIds)
+      .neq('sender_id', userId)
       .is('read_at', null)
       .order('created_at', { ascending: false });
 
@@ -320,49 +539,167 @@ export const getUnreadMessages = async (userId: string): Promise<Message[]> => {
       return [];
     }
 
-    return data || [];
+    return data as any;
   } catch (error) {
     console.error('Error in getUnreadMessages:', error);
     return [];
   }
 };
 
-export const markMessageAsRead = async (messageId: string): Promise<Message | null> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Using local database for marking message as read');
-    return localMessages.markMessageAsRead(messageId) || null;
-  }
-
+// Create announcement message
+export const createAnnouncement = async (
+  senderId: string,
+  subject: string,
+  content: string,
+  targetRoles?: string[]
+): Promise<Message | null> => {
   try {
-    return await updateMessage(messageId, { read_at: new Date().toISOString() });
+    const { data, error } = await supabase
+      .from(MESSAGES_TABLE)
+      .insert({
+        sender_id: senderId,
+        subject,
+        content,
+        is_announcement: true,
+        target_roles: targetRoles || null,
+        delivered_at: new Date().toISOString(),
+      })
+      .select(`
+        *,
+        sender:sender_id (
+          id,
+          full_name,
+          email,
+          avatar_url
+        )
+      `)
+      .single();
+
+    if (error) {
+      console.error('Error creating announcement:', error);
+      return null;
+    }
+
+    return data as any;
   } catch (error) {
-    console.error('Supabase mark as read failed, falling back to local database:', error);
-    return localMessages.markMessageAsRead(messageId) || null;
+    console.error('Error in createAnnouncement:', error);
+    return null;
   }
 };
 
-// Real-time subscription for new messages
-export const subscribeToMessages = (userId: string, callback: (message: Message) => void) => {
+// Legacy function - Create a direct message (non-conversation based)
+export const createMessage = async (
+  messageData: {
+    sender_id: string;
+    recipient_id?: string;
+    subject?: string;
+    content: string;
+    is_announcement?: boolean;
+    target_roles?: string[];
+  }
+): Promise<Message | null> => {
+  try {
+    // If it's an announcement, use createAnnouncement
+    if (messageData.is_announcement) {
+      return await createAnnouncement(
+        messageData.sender_id,
+        messageData.subject || 'Announcement',
+        messageData.content,
+        messageData.target_roles
+      );
+    }
+
+    // For direct messages, create or get conversation first
+    if (!messageData.recipient_id) {
+      console.error('recipient_id is required for direct messages');
+      return null;
+    }
+
+    const conversationId = await getOrCreateConversation(
+      messageData.sender_id,
+      messageData.recipient_id
+    );
+
+    // Send the message
+    return await sendMessage(
+      conversationId,
+      messageData.sender_id,
+      messageData.content
+    );
+  } catch (error) {
+    console.error('Error in createMessage:', error);
+    return null;
+  }
+};
+
+// Legacy function - Subscribe to new messages for a user
+export const subscribeToMessages = (
+  userId: string,
+  callback: (message: Message) => void
+) => {
   try {
     return supabase
-      .channel('messages')
-      .on('postgres_changes',
+      .channel(`user-messages:${userId}`)
+      .on(
+        'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: MESSAGES_TABLE,
-          filter: `or(sender_id.eq.${userId},recipient_id.eq.${userId},is_announcement.eq.true)`
         },
-        (payload) => {
-          callback(payload.new as Message);
+        async (payload) => {
+          const message = payload.new as any;
+          
+          // Check if this message is relevant to the user
+          const isRelevant = 
+            message.sender_id === userId ||
+            message.is_announcement ||
+            // Check if user is in the conversation
+            (message.conversation_id && await isUserInConversation(userId, message.conversation_id));
+
+          if (isRelevant) {
+            // Fetch complete message with sender info
+            const { data } = await supabase
+              .from(MESSAGES_TABLE)
+              .select(`
+                *,
+                sender:sender_id (
+                  id,
+                  full_name,
+                  email,
+                  avatar_url
+                )
+              `)
+              .eq('id', message.id)
+              .single();
+
+            if (data) {
+              callback(data as any);
+            }
+          }
         }
       )
       .subscribe();
   } catch (error) {
     console.error('Error setting up message subscription:', error);
-    // Return a dummy subscription object
     return {
       unsubscribe: () => {}
     };
+  }
+};
+
+// Helper function to check if user is in a conversation
+const isUserInConversation = async (userId: string, conversationId: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select('user_id')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .single();
+
+    return !error && !!data;
+  } catch (error) {
+    return false;
   }
 };

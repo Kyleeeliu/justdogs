@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,80 +12,59 @@ import {
   UserGroupIcon,
   ClockIcon,
   XMarkIcon,
+  PaperAirplaneIcon,
   PhotoIcon,
+  PaperClipIcon,
+  CheckIcon,
+  ArrowLeftIcon,
   VideoCameraIcon
 } from '@heroicons/react/24/outline';
+import { CheckIcon as CheckCheckIcon } from '@heroicons/react/24/solid';
 import { getCurrentUser } from '@/lib/auth/auth';
 import { Message, User, UserRole } from '@/types';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatTime } from '@/lib/utils';
 import { getAllUsers } from '@/lib/supabase/users';
-import { createMessage, getMessagesByUser, subscribeToMessages, markMessageAsRead } from '@/lib/supabase/messages';
 import { 
-  uploadMessageMedia, 
-  validateMediaFile, 
-  getMediaType,
-  createVideoThumbnail,
-  uploadVideoThumbnail
-} from '@/lib/supabase/storage';
+  createMessage, 
+  getMessagesByUser, 
+  subscribeToMessages, 
+  markMessageAsRead
+} from '@/lib/supabase/messages';
 
-// Import getAllUsers directly from the database
+// Mock conversation type for the UI
+interface MockConversation {
+  id: string;
+  participants: string[];
+  participantNames: string[];
+  lastMessage?: string;
+  lastMessageTime?: string;
+  unreadCount: number;
+}
 
 export default function MessagesPage() {
+  const [conversations, setConversations] = useState<MockConversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<MockConversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showNewMessageModal, setShowNewMessageModal] = useState(false);
-  const [formData, setFormData] = useState({
-    recipient_id: '',
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [messageInput, setMessageInput] = useState('');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Announcement form data
+  const [announcementData, setAnnouncementData] = useState({
     subject: '',
     content: '',
-    is_announcement: false,
     target_roles: [] as UserRole[]
   });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null);
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [availableRecipients, setAvailableRecipients] = useState<User[]>([]);
-  const [userNames, setUserNames] = useState<{[key: string]: string}>({});
-
-  const getAvailableRecipients = useCallback(async (user: User | null) => {
-    if (!user) return [];
-    
-    try {
-      const allUsers = await getAllUsers();
-      console.log('All users from Supabase:', allUsers);
-      console.log('Current user:', user);
-      
-      // Filter recipients based on role
-      let recipients: User[] = [];
-      
-      if (user.role === 'admin') {
-        // Admins can message everyone except themselves
-        recipients = allUsers.filter(u => u.id !== user.id);
-      } else if (user.role === 'trainer') {
-        // Trainers can message parents, behaviorists, and admins
-        recipients = allUsers.filter(u =>
-          u.id !== user.id && (u.role === 'parent' || u.role === 'behaviorist' || u.role === 'admin')
-        );
-      } else if (user.role === 'parent') {
-        // Parents can message everyone (trainers, behaviorists, admins, other parents)
-        recipients = allUsers.filter(u => u.id !== user.id);
-      } else if (user.role === 'behaviorist') {
-        // Behaviorists can message parents, trainers, and admins
-        recipients = allUsers.filter(u =>
-          u.id !== user.id && (u.role === 'parent' || u.role === 'trainer' || u.role === 'admin')
-        );
-      }
-      
-      console.log('Available recipients for', user.role + ':', recipients);
-      return recipients;
-    } catch (error) {
-      console.error('Error fetching recipients:', error);
-      return [];
-    }
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -97,7 +77,7 @@ export default function MessagesPage() {
           console.warn('Loading timeout - forcing completion');
           setLoading(false);
           setMessages([]);
-          setAvailableRecipients([]);
+          setAvailableUsers([]);
         }
       }, 10000); // 10 second timeout
 
@@ -120,83 +100,96 @@ export default function MessagesPage() {
         
         setCurrentUser(user);
         
-        // Load user names first (with timeout protection)
-        try {
-          const namePromise = loadUserNames();
-          const nameTimeout = new Promise<void>((resolve) => {
-            setTimeout(() => {
-              console.warn('loadUserNames timeout');
-              resolve();
-            }, 5000);
-          });
-          await Promise.race([namePromise, nameTimeout]);
-        } catch (nameError) {
-          console.error('Error loading user names:', nameError);
-        }
-        
         if (user) {
-          // Load messages from Supabase based on user role
-          try {
-            console.log('Fetching messages for user:', user.id);
-            const messagePromise = getMessagesByUser(user.id);
-            const messageTimeout = new Promise<Message[]>((resolve) => {
-              setTimeout(() => {
-                console.warn('getMessagesByUser timeout');
-                resolve([]);
-              }, 5000);
-            });
-            const userMessages = await Promise.race([messagePromise, messageTimeout]);
-            console.log('Loaded messages:', userMessages.length);
-            if (mounted) {
-              setMessages(userMessages);
-            }
-          } catch (messageError) {
-            console.error('Error fetching messages by user:', messageError);
-            if (mounted) {
-              setMessages([]);
-            }
+          // Load available users for chat
+          const users = await getAllUsers();
+          if (mounted) {
+            setAvailableUsers(users.filter(u => u.id !== user.id));
           }
           
-          // Load available recipients
-          try {
-            const recipientPromise = getAvailableRecipients(user);
-            const recipientTimeout = new Promise<User[]>((resolve) => {
-              setTimeout(() => {
-                console.warn('getAvailableRecipients timeout');
-                resolve([]);
-              }, 5000);
-            });
-            const recipients = await Promise.race([recipientPromise, recipientTimeout]);
-            if (mounted) {
-              setAvailableRecipients(recipients);
+          // Load messages and create mock conversations
+          const userMessages = await getMessagesByUser(user.id);
+          if (mounted) {
+            setMessages(userMessages);
+          }
+          
+          // Create mock conversations from messages
+          const conversationMap = new Map<string, MockConversation>();
+          
+          userMessages.forEach(message => {
+            let conversationId: string;
+            let otherParticipant: string;
+            
+            if (message.is_announcement) {
+              conversationId = 'announcements';
+              otherParticipant = 'System';
+            } else if (message.sender_id === user.id) {
+              conversationId = message.recipient_id || 'unknown';
+              otherParticipant = message.recipient_id || 'unknown';
+            } else {
+              conversationId = message.sender_id;
+              otherParticipant = message.sender_id;
             }
-          } catch (recipientError) {
-            console.error('Error loading recipients:', recipientError);
-            if (mounted) {
-              setAvailableRecipients([]);
+            
+            if (!conversationMap.has(conversationId)) {
+              const otherUser = users.find(u => u.id === otherParticipant);
+              conversationMap.set(conversationId, {
+                id: conversationId,
+                participants: conversationId === 'announcements' ? ['system'] : [user.id, otherParticipant],
+                participantNames: conversationId === 'announcements' ? ['Announcements'] : [otherUser?.full_name || 'Unknown User'],
+                lastMessage: message.content,
+                lastMessageTime: message.created_at,
+                unreadCount: 0
+              });
             }
+            
+            const conversation = conversationMap.get(conversationId)!;
+            if (new Date(message.created_at) > new Date(conversation.lastMessageTime || '')) {
+              conversation.lastMessage = message.content;
+              conversation.lastMessageTime = message.created_at;
+            }
+            
+            if (!message.read_at && message.sender_id !== user.id) {
+              conversation.unreadCount++;
+            }
+          });
+          
+          if (mounted) {
+            setConversations(Array.from(conversationMap.values()).sort((a, b) => 
+              new Date(b.lastMessageTime || '').getTime() - new Date(a.lastMessageTime || '').getTime()
+            ));
           }
           
           // Subscribe to real-time message updates
           try {
             subscription = subscribeToMessages(user.id, (newMessage) => {
               if (mounted) {
-                setMessages(prev => [newMessage, ...prev]);
+                setMessages(prev => [...prev, newMessage]);
+                // Update conversations when new message arrives
+                const updatedConversations = [...conversations];
+                const convIndex = updatedConversations.findIndex(c => 
+                  c.id === (newMessage.is_announcement ? 'announcements' : 
+                    (newMessage.sender_id === user.id ? newMessage.recipient_id : newMessage.sender_id))
+                );
+                if (convIndex >= 0) {
+                  updatedConversations[convIndex].lastMessage = newMessage.content;
+                  updatedConversations[convIndex].lastMessageTime = newMessage.created_at;
+                  if (!newMessage.read_at && newMessage.sender_id !== user.id) {
+                    updatedConversations[convIndex].unreadCount++;
+                  }
+                }
+                setConversations(updatedConversations);
               }
             });
           } catch (subscriptionError) {
             console.error('Error setting up message subscription:', subscriptionError);
           }
-        } else {
-          console.log('No user found, setting empty messages');
-          setMessages([]);
-          setAvailableRecipients([]);
         }
       } catch (error) {
         console.error('Error loading user:', error);
         if (mounted) {
           setMessages([]);
-          setAvailableRecipients([]);
+          setAvailableUsers([]);
         }
       } finally {
         clearTimeout(timeoutId);
@@ -217,171 +210,168 @@ export default function MessagesPage() {
     };
   }, []);
 
-  const filteredMessages = messages.filter(message =>
-    message.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    message.content.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-  const unreadMessages = messages.filter(message => !message.read_at);
-  const recentMessages = messages.slice(0, 5);
-
-  const getSenderName = (senderId: string) => {
-    return userNames[senderId] || 'Unknown User';
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const getReceiverName = (receiverId?: string) => {
-    if (!receiverId) return 'All Users';
-    return userNames[receiverId] || 'Unknown User';
-  };
-
-  const loadUserNames = async () => {
-    try {
-      const allUsers = await getAllUsers();
-      const nameMap: {[key: string]: string} = {};
-      allUsers.forEach(user => {
-        nameMap[user.id] = user.full_name;
-      });
-      setUserNames(nameMap);
-    } catch (error) {
-      console.error('Error loading user names:', error);
-    }
-  };
-
-  const getMessageTypeColor = (isAnnouncement: boolean) => {
-    if (isAnnouncement) {
-      return 'bg-purple-100 text-purple-800';
-    }
-    return 'bg-[rgb(0_32_96)] text-white';
-  };
-
-  const handleInputChange = (field: string, value: string | boolean | UserRole[]) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file
-    const validation = validateMediaFile(file);
-    if (!validation.isValid) {
-      alert(validation.error);
-      return;
-    }
-
-    setSelectedFile(file);
+  const handleConversationSelect = async (conversation: MockConversation) => {
+    setSelectedConversation(conversation);
     
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFilePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
-    setFilePreview(null);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    // Filter messages for this conversation
+    let conversationMessages: Message[] = [];
     
-    if (!currentUser) return;
+    if (conversation.id === 'announcements') {
+      conversationMessages = messages.filter(msg => msg.is_announcement);
+    } else {
+      conversationMessages = messages.filter(msg => 
+        !msg.is_announcement && (
+          (msg.sender_id === currentUser?.id && msg.recipient_id === conversation.id) ||
+          (msg.sender_id === conversation.id && msg.recipient_id === currentUser?.id)
+        )
+      );
+    }
+    
+    // Mark messages as read
+    const unreadMessages = conversationMessages.filter(
+      msg => !msg.read_at && msg.sender_id !== currentUser?.id
+    );
+    
+    for (const msg of unreadMessages) {
+      await markMessageAsRead(msg.id);
+    }
+    
+    // Update local state
+    setMessages(prev => prev.map(msg => 
+      unreadMessages.some(unread => unread.id === msg.id) 
+        ? { ...msg, read_at: new Date().toISOString() }
+        : msg
+    ));
+  };
+
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() && attachments.length === 0) return;
+    if (!currentUser || !selectedConversation) return;
 
     try {
-      setUploadingFile(true);
-      
-      let mediaUrl: string | undefined;
-      let mediaType: 'image' | 'video' | undefined;
-      let mediaThumbnailUrl: string | undefined;
-
-      // Upload file if selected
-      if (selectedFile) {
-        mediaType = getMediaType(selectedFile);
-        mediaUrl = await uploadMessageMedia(selectedFile, currentUser.id, mediaType) || undefined;
-        
-        // Create thumbnail for videos
-        if (mediaType === 'video' && mediaUrl) {
-          const thumbnail = await createVideoThumbnail(selectedFile);
-          if (thumbnail) {
-            mediaThumbnailUrl = await uploadVideoThumbnail(thumbnail, currentUser.id, selectedFile.name) || undefined;
-          }
-        }
-      }
-
-      // Create message in Supabase
-      const newMessage = await createMessage({
+      const messageData = {
         sender_id: currentUser.id,
-        recipient_id: formData.is_announcement ? undefined : formData.recipient_id,
-        subject: formData.subject,
-        content: formData.content,
-        is_announcement: formData.is_announcement,
-        target_roles: formData.is_announcement ? formData.target_roles : undefined,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        media_thumbnail_url: mediaThumbnailUrl,
-      });
-
-      // Update local state
-      setMessages(prev => [newMessage, ...prev]);
-      setFormData({
-        recipient_id: '',
-        subject: '',
-        content: '',
+        recipient_id: selectedConversation.id === 'announcements' ? undefined : selectedConversation.id,
+        subject: '', // Chat messages don't need subjects
+        content: messageInput.trim(),
         is_announcement: false,
-        target_roles: [] as UserRole[]
-      });
-      setSelectedFile(null);
-      setFilePreview(null);
-      setShowNewMessageModal(false);
-      alert('Message sent successfully!');
+        message_type: (attachments.length > 0 ? 'image' : 'text') as 'text' | 'image' | 'file'
+      };
+
+      const newMessage = await createMessage(messageData);
+      if (newMessage) {
+        setMessages(prev => [...prev, newMessage]);
+        // Update conversation last message
+        setConversations(prev => prev.map(conv => 
+          conv.id === selectedConversation.id
+            ? { ...conv, lastMessage: newMessage.content, lastMessageTime: newMessage.created_at }
+            : conv
+        ));
+      }
+      setMessageInput('');
+      setAttachments([]);
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Failed to send message. Please try again.');
-    } finally {
-      setUploadingFile(false);
     }
   };
 
-  const handleMessageClick = async (message: Message) => {
-    setSelectedMessage(message);
-    
-    // Mark message as read if it's unread and the current user is the recipient
-    if (!message.read_at && currentUser &&
-        (message.recipient_id === currentUser.id || message.is_announcement)) {
-      try {
-        await markMessageAsRead(message.id);
-        // Update local state
-        setMessages(prev => prev.map(m =>
-          m.id === message.id ? { ...m, read_at: new Date().toISOString() } : m
-        ));
-      } catch (error) {
-        console.error('Error marking message as read:', error);
-      }
+  const handleCreateNewChat = async () => {
+    if (selectedUsers.length === 0 || !currentUser) return;
+
+    // For now, just select the first user and create a mock conversation
+    const selectedUser = availableUsers.find(u => u.id === selectedUsers[0]);
+    if (selectedUser) {
+      const newConversation: MockConversation = {
+        id: selectedUser.id,
+        participants: [currentUser.id, selectedUser.id],
+        participantNames: [selectedUser.full_name],
+        unreadCount: 0
+      };
+      
+      setConversations(prev => [newConversation, ...prev]);
+      setSelectedConversation(newConversation);
+      setShowNewChatModal(false);
+      setSelectedUsers([]);
+      setUserSearchTerm('');
     }
   };
 
-  // Debug: Show current users in database
-  const debugUsers = async () => {
+  const handleSendAnnouncement = async () => {
+    if (!announcementData.subject.trim() || !announcementData.content.trim() || !currentUser) return;
+
     try {
-      const allUsers = await getAllUsers();
-      console.log('=== DEBUG: All Users in Supabase ===');
-      console.log('Total users:', allUsers.length);
-      allUsers.forEach((user, index) => {
-        console.log(`User ${index + 1}:`, {
-          id: user.id,
-          email: user.email,
-          full_name: user.full_name,
-          role: user.role
-        });
+      await createMessage({
+        sender_id: currentUser.id,
+        subject: announcementData.subject,
+        content: announcementData.content,
+        is_announcement: true,
+        target_roles: announcementData.target_roles.length > 0 ? announcementData.target_roles : undefined
       });
-      console.log('=== END DEBUG ===');
+
+      setAnnouncementData({ subject: '', content: '', target_roles: [] });
+      setShowAnnouncementModal(false);
+      alert('Announcement sent successfully!');
     } catch (error) {
-      console.error('Error debugging users:', error);
+      console.error('Error sending announcement:', error);
+      alert('Failed to send announcement. Please try again.');
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    setAttachments(prev => [...prev, ...files]);
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const filteredUsers = availableUsers.filter(user =>
+    user.full_name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
+  );
+
+  const filteredConversations = conversations.filter(conv =>
+    conv.participantNames.some(name => 
+      name.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+
+  const getConversationName = (conversation: MockConversation) => {
+    return conversation.participantNames[0] || 'Unknown User';
+  };
+
+  const getConversationMessages = () => {
+    if (!selectedConversation) return [];
+    
+    if (selectedConversation.id === 'announcements') {
+      return messages.filter(msg => msg.is_announcement);
+    }
+    
+    return messages.filter(msg => 
+      !msg.is_announcement && (
+        (msg.sender_id === currentUser?.id && msg.recipient_id === selectedConversation.id) ||
+        (msg.sender_id === selectedConversation.id && msg.recipient_id === currentUser?.id)
+      )
+    ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  };
+
+  const getMessageStatus = (message: Message) => {
+    if (message.sender_id !== currentUser?.id) return null;
+    
+    if (message.read_at) {
+      return <CheckCheckIcon className="h-4 w-4 text-blue-500" />;
+    } else {
+      return <CheckIcon className="h-4 w-4 text-gray-400" />;
     }
   };
 
@@ -395,402 +385,355 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+    <div className="h-[calc(100vh-8rem)] flex flex-col">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Messages</h1>
-          <p className="text-gray-600 text-base">Communicate with trainers, parents, and staff</p>
+          <p className="text-gray-600 text-base">Chat with trainers, parents, and staff</p>
         </div>
         <div className="flex gap-3 mt-6 sm:mt-0">
+          {currentUser?.role === 'admin' && (
+            <Button
+              onClick={() => setShowAnnouncementModal(true)}
+              variant="outline"
+              className="border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white"
+            >
+              <UserGroupIcon className="h-4 w-4 mr-2" />
+              Announcement
+            </Button>
+          )}
           <Button
-            onClick={() => setShowNewMessageModal(true)}
+            onClick={() => setShowNewChatModal(true)}
             className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
           >
             <PlusIcon className="h-4 w-4 mr-2" />
-            New Message
+            New Chat
           </Button>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <Input
-          type="text"
-          placeholder="Search messages..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10 h-11 border-gray-200 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] shadow-sm"
-        />
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-semibold text-gray-700">Total Messages</CardTitle>
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <ChatBubbleLeftRightIcon className="h-4 w-4 text-[rgb(0_32_96)]" />
+      {/* Main Chat Interface */}
+      <div className="flex-1 flex bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        {/* Conversations Sidebar */}
+        <div className={`w-full sm:w-80 border-r border-gray-200 flex flex-col ${selectedConversation ? 'hidden sm:flex' : 'flex'}`}>
+          {/* Search */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="relative">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search conversations..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 border-gray-200 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)]"
+              />
             </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold text-gray-900">{messages.length}</div>
-            <p className="text-xs text-gray-500 mt-1">
-              All conversations
-            </p>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-semibold text-gray-700">Unread</CardTitle>
-            <div className="p-2 bg-orange-50 rounded-lg">
-              <ClockIcon className="h-4 w-4 text-orange-600" />
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold text-gray-900">{unreadMessages.length}</div>
-            <p className="text-xs text-gray-500 mt-1">
-              Require attention
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-semibold text-gray-700">Recent Activity</CardTitle>
-            <div className="p-2 bg-green-50 rounded-lg">
-              <UserGroupIcon className="h-4 w-4 text-green-600" />
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold text-gray-900">{recentMessages.length}</div>
-            <p className="text-xs text-gray-500 mt-1">
-              Latest messages
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Messages List */}
-      <div className="space-y-3">
-        {filteredMessages.map((message) => (
-          <Card
-            key={message.id}
-            className={`hover:shadow-lg transition-all duration-200 cursor-pointer border-gray-200 ${
-              !message.read_at
-                ? 'border-l-4 border-l-[rgb(0_32_96)] bg-gradient-to-r from-[rgb(0_32_96)]/5 to-transparent shadow-sm'
-                : 'hover:border-gray-300'
-            }`}
-            onClick={() => handleMessageClick(message)}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-3 mb-3">
-                    {!message.read_at && (
-                      <div className="w-2.5 h-2.5 bg-[rgb(0_32_96)] rounded-full flex-shrink-0"></div>
-                    )}
-                    <h3 className="font-semibold text-lg text-gray-900 truncate">{message.subject}</h3>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold flex-shrink-0 ${getMessageTypeColor(message.is_announcement)}`}>
-                      {message.is_announcement ? 'Announcement' : 'Direct'}
+          {/* Conversations List */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredConversations.map((conversation) => (
+              <div
+                key={conversation.id}
+                onClick={() => handleConversationSelect(conversation)}
+                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
+                  selectedConversation?.id === conversation.id ? 'bg-blue-50 border-l-4 border-l-[rgb(0_32_96)]' : ''
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
+                    <span className="text-white font-medium">
+                      {getConversationName(conversation).charAt(0)}
                     </span>
                   </div>
-                  
-                  <div className="mb-4 space-y-1">
-                    <div className="flex items-center text-sm text-gray-600">
-                      <span className="font-medium text-gray-700">From:</span>
-                      <span className="ml-1">{getSenderName(message.sender_id)}</span>
-                      {!message.is_announcement && (
-                        <>
-                          <span className="mx-3 text-gray-400">•</span>
-                          <span className="font-medium text-gray-700">To:</span>
-                          <span className="ml-1">{getReceiverName(message.recipient_id)}</span>
-                        </>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium text-gray-900 truncate">
+                        {getConversationName(conversation)}
+                      </h3>
+                      {conversation.unreadCount > 0 && (
+                        <span className="bg-[rgb(0_32_96)] text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                          {conversation.unreadCount}
+                        </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-500 font-medium">
-                      {formatDateTime(message.created_at)}
+                    <p className="text-sm text-gray-500 truncate">
+                      {conversation.lastMessage || 'No messages yet'}
                     </p>
+                    {conversation.lastMessageTime && (
+                      <p className="text-xs text-gray-400">
+                        {formatTime(conversation.lastMessageTime)}
+                      </p>
+                    )}
                   </div>
-
-                  <p className="text-gray-700 line-clamp-2 leading-relaxed">
-                    {message.content}
-                  </p>
-                  
-                  {/* Media Indicator */}
-                  {message.media_url && (
-                    <div className="flex items-center mt-2 text-sm text-gray-500">
-                      {message.media_type === 'image' ? (
-                        <>
-                          <PhotoIcon className="h-4 w-4 mr-1" />
-                          <span>Image attached</span>
-                        </>
-                      ) : (
-                        <>
-                          <VideoCameraIcon className="h-4 w-4 mr-1" />
-                          <span>Video attached</span>
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        ))}
+            ))}
+
+            {filteredConversations.length === 0 && (
+              <div className="p-8 text-center text-gray-500">
+                <ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>No conversations yet</p>
+                <p className="text-sm">Start a new chat to begin messaging</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Chat Area */}
+        <div className={`flex-1 flex flex-col ${selectedConversation ? 'flex' : 'hidden sm:flex'}`}>
+          {selectedConversation ? (
+            <>
+              {/* Chat Header */}
+              <div className="p-4 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center space-x-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedConversation(null)}
+                    className="sm:hidden"
+                  >
+                    <ArrowLeftIcon className="h-5 w-5" />
+                  </Button>
+                  <div className="w-10 h-10 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
+                    <span className="text-white font-medium">
+                      {getConversationName(selectedConversation).charAt(0)}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      {getConversationName(selectedConversation)}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {selectedConversation.id === 'announcements' ? 'System announcements' : 'Online'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {getConversationMessages().map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.sender_id === currentUser?.id ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                        message.sender_id === currentUser?.id
+                          ? 'bg-[rgb(0_32_96)] text-white'
+                          : 'bg-gray-100 text-gray-900'
+                      }`}
+                    >
+                      {message.sender_id !== currentUser?.id && !message.is_announcement && (
+                        <p className="text-xs font-medium mb-1 opacity-70">
+                          {availableUsers.find(u => u.id === message.sender_id)?.full_name || 'Unknown'}
+                        </p>
+                      )}
+                      
+                      {message.is_announcement && (
+                        <p className="text-xs font-medium mb-1 opacity-70">
+                          📢 {message.subject}
+                        </p>
+                      )}
+                      
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                      
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-xs opacity-70">
+                          {formatTime(message.created_at)}
+                        </span>
+                        {getMessageStatus(message)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Message Input */}
+              {selectedConversation.id !== 'announcements' && (
+                <div className="p-4 border-t border-gray-200 bg-white">
+                  {attachments.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {attachments.map((file, index) => (
+                        <div key={index} className="relative">
+                          {file.type.startsWith('image/') ? (
+                            <div className="relative">
+                              <img
+                                src={URL.createObjectURL(file)}
+                                alt={file.name}
+                                className="w-16 h-16 object-cover rounded"
+                              />
+                              <button
+                                onClick={() => removeAttachment(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center space-x-2 bg-gray-100 p-2 rounded">
+                              <PaperClipIcon className="h-4 w-4" />
+                              <span className="text-sm truncate max-w-20">{file.name}</span>
+                              <button
+                                onClick={() => removeAttachment(index)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-end space-x-2">
+                    <div className="flex space-x-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => imageInputRef.current?.click()}
+                        className="p-2"
+                      >
+                        <PhotoIcon className="h-5 w-5 text-gray-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-2"
+                      >
+                        <PaperClipIcon className="h-5 w-5 text-gray-500" />
+                      </Button>
+                    </div>
+                    
+                    <div className="flex-1">
+                      <Input
+                        value={messageInput}
+                        onChange={(e) => setMessageInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                        placeholder="Type a message..."
+                        className="border-gray-200 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] text-gray-900 bg-white"
+                      />
+                    </div>
+                    
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={!messageInput.trim() && attachments.length === 0}
+                      className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] p-2"
+                    >
+                      <PaperAirplaneIcon className="h-5 w-5" />
+                    </Button>
+                  </div>
+
+                  {/* Hidden file inputs */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-gray-50">
+              <div className="text-center">
+                <ChatBubbleLeftRightIcon className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Select a conversation</h3>
+                <p className="text-gray-500">Choose a conversation from the sidebar to start messaging</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Empty State */}
-      {filteredMessages.length === 0 && (
-        <Card className="border-gray-200 shadow-sm">
-          <CardContent className="p-16 text-center">
-            <div className="p-4 bg-gray-50 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
-              <ChatBubbleLeftRightIcon className="h-10 w-10 text-gray-400" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-3">No messages found</h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto leading-relaxed">
-              {searchTerm ? 'Try adjusting your search terms to find what you\'re looking for.' : 'Start a conversation by sending your first message to connect with others.'}
-            </p>
-            {!searchTerm && (
-              <Button
-                onClick={() => setShowNewMessageModal(true)}
-                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
-              >
-                <PlusIcon className="h-4 w-4 mr-2" />
-                Send First Message
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* New Message Modal */}
-      {showNewMessageModal && (
+      {/* New Chat Modal */}
+      {showNewChatModal && (
         <div className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-200">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50 rounded-t-xl">
-              <h2 className="text-xl font-semibold text-gray-900">Compose Message</h2>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto border border-gray-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">New Chat</h2>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowNewMessageModal(false)}
+                onClick={() => setShowNewChatModal(false)}
                 className="hover:bg-gray-200 rounded-full p-2"
               >
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
               </Button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Message Type */}
-              <div className="space-y-3">
-                <label className="block text-sm font-semibold text-gray-700">Message Type</label>
-                <div className="flex items-center space-x-6">
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      name="messageType"
-                      checked={!formData.is_announcement}
-                      onChange={() => handleInputChange('is_announcement', false)}
-                      className="mr-3 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300"
-                    />
-                    <span className="text-sm font-medium text-gray-900">Direct Message</span>
-                  </label>
-                  {currentUser?.role === 'admin' && (
-                    <label className="flex items-center cursor-pointer">
-                      <input
-                        type="radio"
-                        name="messageType"
-                        checked={formData.is_announcement}
-                        onChange={() => handleInputChange('is_announcement', true)}
-                        className="mr-3 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300"
-                      />
-                      <span className="text-sm font-medium text-gray-900">Announcement</span>
-                    </label>
-                  )}
-                </div>
-              </div>
-
-              {/* Recipient Selection */}
-              {!formData.is_announcement && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-gray-700">
-                    Recipient
-                  </label>
-                  <select
-                    value={formData.recipient_id}
-                    onChange={(e) => handleInputChange('recipient_id', e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-[rgb(0_32_96)] text-gray-900 bg-white shadow-sm transition-colors"
-                    required
-                  >
-                    <option value="">Select recipient...</option>
-                    {availableRecipients.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.full_name} ({user.role})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Target Roles for Announcements */}
-              {formData.is_announcement && (
-                <div className="space-y-3">
-                  <label className="block text-sm font-semibold text-gray-700">
-                    Target Audience
-                  </label>
-                  <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
-                    {(['parent', 'trainer', 'behaviorist'] as UserRole[]).map(role => (
-                      <label key={role} className="flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.target_roles.includes(role)}
-                          onChange={(e) => {
-                            const newRoles = e.target.checked
-                              ? [...formData.target_roles, role]
-                              : formData.target_roles.filter(r => r !== role);
-                            handleInputChange('target_roles', newRoles);
-                          }}
-                          className="mr-3 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300 rounded"
-                        />
-                        <span className="text-sm font-medium capitalize text-gray-900">{role}s</span>
-                      </label>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    Select specific roles to target, or leave all unchecked to send to everyone.
-                  </p>
-                </div>
-              )}
-
-              {/* Subject */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700">
-                  Subject
-                </label>
+            <div className="p-6 space-y-4">
+              {/* User Search */}
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   type="text"
-                  value={formData.subject}
-                  onChange={(e) => handleInputChange('subject', e.target.value)}
-                  placeholder="Enter message subject..."
-                  className="h-11 border-gray-300 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] shadow-sm"
-                  required
+                  placeholder="Search users..."
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  className="pl-10 border-gray-300 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] text-gray-900 bg-white placeholder-gray-500"
                 />
               </div>
 
-              {/* Content */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700">
-                  Message Content
-                </label>
-                <textarea
-                  value={formData.content}
-                  onChange={(e) => handleInputChange('content', e.target.value)}
-                  placeholder="Type your message here..."
-                  className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-[rgb(0_32_96)] min-h-[140px] resize-vertical text-gray-900 bg-white shadow-sm transition-colors"
-                  required
-                />
-              </div>
-
-              {/* File Upload */}
-              <div className="space-y-3">
-                <label className="block text-sm font-semibold text-gray-700">
-                  Attach Media (Optional)
-                </label>
-                <div className="flex items-center space-x-3">
-                  <label className="flex-1 cursor-pointer">
-                    <div className="flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-[rgb(0_32_96)] transition-colors bg-gray-50 hover:bg-gray-100">
-                      <PhotoIcon className="h-5 w-5 text-gray-400 mr-2" />
-                      <span className="text-sm text-gray-600 font-medium">
-                        {selectedFile ? selectedFile.name : 'Choose image or video'}
-                      </span>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      disabled={uploadingFile}
-                    />
-                  </label>
-                  {selectedFile && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRemoveFile}
-                      className="px-3"
+              {/* User List */}
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {filteredUsers.length > 0 ? (
+                  filteredUsers.map(user => (
+                    <div
+                      key={user.id}
+                      onClick={() => {
+                        setSelectedUsers([user.id]);
+                        handleCreateNewChat();
+                      }}
+                      className="flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-colors hover:bg-gray-50 border border-gray-100"
                     >
-                      <XMarkIcon className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500">
-                  Supported formats: Images (JPEG, PNG, GIF, WebP) and Videos (MP4, MOV, AVI, WebM). Max size: 10MB
-                </p>
-                
-                {/* File Preview */}
-                {filePreview && selectedFile && (
-                  <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden">
-                    {selectedFile.type.startsWith('image/') ? (
-                      <img
-                        src={filePreview}
-                        alt="Preview"
-                        className="w-full h-48 object-cover"
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center bg-gray-100 h-48">
-                        <div className="text-center">
-                          <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600">Video: {selectedFile.name}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        </div>
+                      <div className="w-10 h-10 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
+                        <span className="text-white font-medium">{user.full_name.charAt(0)}</span>
                       </div>
-                    )}
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{user.full_name}</p>
+                        <p className="text-sm text-gray-500 capitalize">{user.role}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 text-sm">No users found</p>
+                    <p className="text-gray-400 text-xs mt-1">
+                      {userSearchTerm ? 'Try a different search term' : 'No other users available to message'}
+                    </p>
                   </div>
                 )}
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowNewMessageModal(false)}
-                  className="px-6 py-2 border-gray-300 hover:bg-gray-50"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="px-6 py-2 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
-                  disabled={uploadingFile}
-                >
-                  {uploadingFile ? 'Uploading...' : 'Send Message'}
-                </Button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Message Detail Modal */}
-      {selectedMessage && (
+      {/* Announcement Modal */}
+      {showAnnouncementModal && (
         <div className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-200">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-200">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50 rounded-t-xl">
-              <div className="flex items-center space-x-4">
-                <h2 className="text-xl font-semibold text-gray-900 truncate">{selectedMessage.subject}</h2>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getMessageTypeColor(selectedMessage.is_announcement)}`}>
-                  {selectedMessage.is_announcement ? 'Announcement' : 'Direct'}
-                </span>
-              </div>
+              <h2 className="text-xl font-semibold text-gray-900">Send Announcement</h2>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSelectedMessage(null)}
+                onClick={() => setShowAnnouncementModal(false)}
                 className="hover:bg-gray-200 rounded-full p-2"
               >
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
@@ -798,113 +741,71 @@ export default function MessagesPage() {
             </div>
             
             <div className="p-6 space-y-6">
-              <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-semibold text-gray-700">From:</span>
-                      <span className="text-sm text-gray-900 font-medium">{getSenderName(selectedMessage.sender_id)}</span>
-                    </div>
-                    {!selectedMessage.is_announcement && (
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-semibold text-gray-700">To:</span>
-                        <span className="text-sm text-gray-900 font-medium">{getReceiverName(selectedMessage.recipient_id)}</span>
-                      </div>
-                    )}
-                    {selectedMessage.is_announcement && selectedMessage.target_roles && selectedMessage.target_roles.length > 0 && (
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-semibold text-gray-700">Target Roles:</span>
-                        <span className="text-sm text-gray-900 font-medium">{selectedMessage.target_roles.join(', ')}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-semibold text-gray-700">Sent:</span>
-                      <span className="text-sm text-gray-600">{formatDateTime(selectedMessage.created_at)}</span>
-                    </div>
-                    {selectedMessage.read_at && (
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-semibold text-gray-700">Read:</span>
-                        <span className="text-sm text-gray-600">{formatDateTime(selectedMessage.read_at)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Message Content</h3>
-                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                  <p className="text-gray-800 whitespace-pre-wrap leading-relaxed text-base">
-                    {selectedMessage.content}
-                  </p>
-                </div>
+              {/* Subject */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Subject</label>
+                <Input
+                  type="text"
+                  value={announcementData.subject}
+                  onChange={(e) => setAnnouncementData(prev => ({ ...prev, subject: e.target.value }))}
+                  placeholder="Enter announcement subject..."
+                  className="border-gray-300 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)]"
+                />
               </div>
 
-              {/* Media Display */}
-              {selectedMessage.media_url && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center">
-                    {selectedMessage.media_type === 'image' ? (
-                      <>
-                        <PhotoIcon className="h-5 w-5 mr-2" />
-                        Attached Image
-                      </>
-                    ) : (
-                      <>
-                        <VideoCameraIcon className="h-5 w-5 mr-2" />
-                        Attached Video
-                      </>
-                    )}
-                  </h3>
-                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                    {selectedMessage.media_type === 'image' ? (
-                      <img
-                        src={selectedMessage.media_url}
-                        alt="Message attachment"
-                        className="w-full max-h-[500px] object-contain"
+              {/* Target Roles */}
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-gray-700">Target Audience</label>
+                <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
+                  {(['parent', 'trainer', 'behaviorist'] as UserRole[]).map(role => (
+                    <label key={role} className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={announcementData.target_roles.includes(role)}
+                        onChange={(e) => {
+                          const newRoles = e.target.checked
+                            ? [...announcementData.target_roles, role]
+                            : announcementData.target_roles.filter(r => r !== role);
+                          setAnnouncementData(prev => ({ ...prev, target_roles: newRoles }));
+                        }}
+                        className="mr-3 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300 rounded"
                       />
-                    ) : (
-                      <video
-                        controls
-                        poster={selectedMessage.media_thumbnail_url}
-                        className="w-full max-h-[500px]"
-                      >
-                        <source src={selectedMessage.media_url} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    )}
-                  </div>
+                      <span className="text-sm font-medium capitalize text-gray-900">{role}s</span>
+                    </label>
+                  ))}
                 </div>
-              )}
-              
+                <p className="text-xs text-gray-600">
+                  Select specific roles to target, or leave all unchecked to send to everyone.
+                </p>
+              </div>
+
+              {/* Content */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Message Content</label>
+                <textarea
+                  value={announcementData.content}
+                  onChange={(e) => setAnnouncementData(prev => ({ ...prev, content: e.target.value }))}
+                  placeholder="Type your announcement here..."
+                  className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-[rgb(0_32_96)] min-h-[140px] resize-vertical text-gray-900 bg-white shadow-sm transition-colors"
+                  required
+                />
+              </div>
+
+              {/* Action Buttons */}
               <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
                 <Button
                   variant="outline"
-                  onClick={() => setSelectedMessage(null)}
-                  className="px-6 py-2 border-gray-300 hover:bg-gray-50"
+                  onClick={() => setShowAnnouncementModal(false)}
+                  className="border-gray-300 hover:bg-gray-50"
                 >
-                  Close
+                  Cancel
                 </Button>
-                {selectedMessage.sender_id !== currentUser?.id && (
-                  <Button
-                    onClick={() => {
-                      setFormData({
-                        recipient_id: selectedMessage.sender_id,
-                        subject: `Re: ${selectedMessage.subject}`,
-                        content: '',
-                        is_announcement: false,
-                        target_roles: []
-                      });
-                      setSelectedMessage(null);
-                      setShowNewMessageModal(true);
-                    }}
-                    className="px-6 py-2 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] shadow-sm"
-                  >
-                    Reply
-                  </Button>
-                )}
+                <Button
+                  onClick={handleSendAnnouncement}
+                  className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+                >
+                  Send Announcement
+                </Button>
               </div>
             </div>
           </div>
