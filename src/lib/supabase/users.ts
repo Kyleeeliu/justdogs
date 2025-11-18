@@ -208,11 +208,47 @@ export const getCurrentSupabaseUser = async (): Promise<User | null> => {
 
     // Now get user profile from users table
     // Since we have a session, RLS will allow us to read our own user data
-    const user = await getUserByEmail(session.user.email!);
+    let user = await getUserByEmail(session.user.email!);
     
+    // If user doesn't exist in users table, try to create it from auth metadata
+    if (!user && session.user) {
+      console.log('getCurrentSupabaseUser: User profile not found, attempting to create from auth data');
+      
+      try {
+        const authUser = session.user;
+        const userMetadata = authUser.user_metadata || {};
+        
+        // Try to create user profile from auth data
+        const newUserData: Omit<User, 'id' | 'created_at' | 'updated_at'> = {
+          email: authUser.email!,
+          full_name: userMetadata.full_name || authUser.email?.split('@')[0] || 'User',
+          role: (userMetadata.role as any) || 'parent', // Default to parent if no role specified
+          phone: userMetadata.phone || null,
+          avatar_url: userMetadata.avatar_url || null,
+        };
+
+        console.log('Creating user profile:', { email: newUserData.email, role: newUserData.role });
+        user = await createUser(newUserData);
+        console.log('User profile created successfully:', user.email);
+      } catch (createError) {
+        console.error('Error creating user profile:', createError);
+        // If creation fails, still try to return a basic user object from auth
+        // This allows the user to at least access the dashboard
+        return {
+          id: session.user.id,
+          email: session.user.email!,
+          full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+          role: (session.user.user_metadata?.role as any) || 'parent',
+          phone: null,
+          avatar_url: null,
+          created_at: session.user.created_at,
+          updated_at: session.user.updated_at || session.user.created_at,
+        } as User;
+      }
+    }
+
     if (!user) {
-      console.warn('getCurrentSupabaseUser: User profile not found in database for:', session.user.email);
-      console.warn('This user may need to be added to the users table manually');
+      console.warn('getCurrentSupabaseUser: Could not get or create user profile');
       return null;
     }
 

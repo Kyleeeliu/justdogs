@@ -1,11 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase.d';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Please check your .env.local file.');
+  const errorMsg = 'Missing Supabase environment variables. Please check your .env.local file.';
+  console.error(errorMsg, {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+    urlPrefix: supabaseUrl?.substring(0, 20),
+  });
+  throw new Error(errorMsg);
+}
+
+// Log configuration in development (without exposing sensitive data)
+if (process.env.NODE_ENV === 'development') {
+  console.log('Supabase client initialized:', {
+    urlConfigured: !!supabaseUrl,
+    keyConfigured: !!supabaseAnonKey,
+    urlPrefix: supabaseUrl?.substring(0, 30) + '...',
+  });
 }
 
 // Create the Supabase client for browser usage

@@ -94,7 +94,6 @@ export const getOrCreateConversation = async (userId1: string, userId2: string):
         is_group: false,
         created_by: userId1,
       })
->>>>>>> c3fe23699ea5bbcecdb99ad9f7bdcf8c5964d504
       .select()
       .single();
 
@@ -247,22 +246,79 @@ export const sendMessage = async (
   attachments?: File[]
 ): Promise<Message | null> => {
   try {
-    // Create the message
+    // Get conversation participants to determine recipient_id
+    const { data: participants, error: participantsError } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select('user_id')
+      .eq('conversation_id', conversationId);
+
+    if (participantsError) {
+      console.error('Error fetching conversation participants:', {
+        error: participantsError,
+        conversationId,
+        message: participantsError.message,
+        details: participantsError.details,
+      });
+      throw new Error(`Failed to fetch conversation participants: ${participantsError.message}`);
+    }
+
+    if (!participants || participants.length === 0) {
+      console.error('No participants found for conversation:', conversationId);
+      throw new Error('No participants found for this conversation');
+    }
+
+    // Find the recipient (the other participant, not the sender)
+    const recipientId = participants.find(p => p.user_id !== senderId)?.user_id || null;
+    
+    if (!recipientId) {
+      console.error('Could not find recipient in conversation:', {
+        conversationId,
+        senderId,
+        participants: participants.map(p => p.user_id),
+      });
+      throw new Error('Could not determine recipient for this conversation');
+    }
+
+    // Create the message with both conversation_id and recipient_id for compatibility
+    const messageData: any = {
+      conversation_id: conversationId,
+      sender_id: senderId,
+      recipient_id: recipientId,
+      content,
+      subject: content.substring(0, 100) || 'Message', // Use content preview as subject if empty string not allowed
+      message_type: attachments && attachments.length > 0 ? 'image' : 'text',
+      delivered_at: new Date().toISOString(),
+    };
+
+    console.log('Inserting message with data:', {
+      conversation_id: messageData.conversation_id,
+      sender_id: messageData.sender_id,
+      recipient_id: messageData.recipient_id,
+      content_length: messageData.content.length,
+      subject: messageData.subject,
+      message_type: messageData.message_type,
+    });
+
     const { data: message, error: messageError } = await supabase
       .from(MESSAGES_TABLE)
-      .insert({
-        conversation_id: conversationId,
-        sender_id: senderId,
-        content,
-        message_type: attachments && attachments.length > 0 ? 'image' : 'text',
-        delivered_at: new Date().toISOString(),
-      })
+      .insert(messageData)
       .select()
       .single();
 
-    if (messageError || !message) {
-      console.error('Error creating message:', messageError);
-      return null;
+    if (messageError) {
+      console.error('Error creating message:', {
+        message: messageError.message,
+        details: messageError.details,
+        hint: messageError.hint,
+        code: messageError.code,
+        fullError: JSON.stringify(messageError, Object.getOwnPropertyNames(messageError))
+      });
+      throw new Error(`Failed to save message: ${messageError.message || 'Unknown error'}`);
+    }
+
+    if (!message) {
+      console.error('Message creation returned no data');
+      throw new Error('Message creation returned no data');
     }
 
     // Upload attachments if any
@@ -277,7 +333,10 @@ export const sendMessage = async (
     return message as any;
   } catch (error) {
     console.error('Error in sendMessage:', error);
-    return null;
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Failed to send message: ${JSON.stringify(error)}`);
   }
 };
 
@@ -596,39 +655,74 @@ export const createMessage = async (
     content: string;
     is_announcement?: boolean;
     target_roles?: string[];
+    message_type?: 'text' | 'image' | 'file';
   }
 ): Promise<Message | null> => {
   try {
+    console.log('createMessage called with:', {
+      sender_id: messageData.sender_id,
+      recipient_id: messageData.recipient_id,
+      is_announcement: messageData.is_announcement,
+      content_length: messageData.content.length,
+    });
+
     // If it's an announcement, use createAnnouncement
     if (messageData.is_announcement) {
-      return await createAnnouncement(
+      const announcement = await createAnnouncement(
         messageData.sender_id,
         messageData.subject || 'Announcement',
         messageData.content,
         messageData.target_roles
       );
+      if (!announcement) {
+        throw new Error('Failed to create announcement');
+      }
+      return announcement;
     }
 
     // For direct messages, create or get conversation first
     if (!messageData.recipient_id) {
       console.error('recipient_id is required for direct messages');
-      return null;
+      throw new Error('Recipient ID is required for direct messages');
     }
 
+    console.log('Creating/getting conversation between:', messageData.sender_id, 'and', messageData.recipient_id);
     const conversationId = await getOrCreateConversation(
       messageData.sender_id,
       messageData.recipient_id
     );
 
+    if (!conversationId) {
+      throw new Error('Failed to create or get conversation');
+    }
+
+    console.log('Conversation ID:', conversationId);
+    console.log('Sending message to conversation');
+
     // Send the message
-    return await sendMessage(
+    const message = await sendMessage(
       conversationId,
       messageData.sender_id,
       messageData.content
     );
+
+    if (!message) {
+      throw new Error('Failed to send message');
+    }
+
+    console.log('Message sent successfully:', message.id);
+    return message;
   } catch (error) {
     console.error('Error in createMessage:', error);
-    return null;
+    // Re-throw with more context
+    if (error instanceof Error) {
+      throw error;
+    }
+    // Properly serialize error objects
+    const errorMessage = typeof error === 'object' && error !== null
+      ? JSON.stringify(error, Object.getOwnPropertyNames(error))
+      : String(error);
+    throw new Error(`Failed to create message: ${errorMessage}`);
   }
 };
 

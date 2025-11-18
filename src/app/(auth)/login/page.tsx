@@ -30,23 +30,33 @@ function LoginForm() {
     setLoading(true);
     setError('');
 
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setError('Sign in is taking longer than expected. Please try again.');
+    }, 30000); // 30 second timeout
+
     try {
       console.log('Login page: Attempting sign in for:', email);
       const result = await signIn(email, password);
       console.log('Login page: Sign in successful:', result);
       
+      clearTimeout(timeoutId);
+      
       if (result && result.user) {
         console.log('Login page: User authenticated:', result.user);
         
-        // Redirect to dashboard
+        // Redirect immediately - useAuth hook will handle session verification
         console.log('Login page: Redirecting to dashboard');
-        window.location.href = '/dashboard';
+        router.push('/dashboard');
+        // Don't set loading to false here - let the redirect happen
       } else {
         console.error('Login page: No user data received');
         setError('Login failed - no user data received');
         setLoading(false);
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       console.error('Login page: Sign in error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred during sign in');
       setLoading(false);

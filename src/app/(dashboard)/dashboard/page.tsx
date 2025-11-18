@@ -13,45 +13,48 @@ import {
   SpeakerWaveIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { getCurrentUser } from '@/lib/auth/auth';
 import { User, DashboardStats, TrainerStats, ParentStats, Message } from '@/types';
 import { useRouter } from 'next/navigation';
 import { getMessagesByUser } from '@/lib/supabase/messages';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<User | null>(null);
+  const { user } = useAuth(); // Use user from useAuth hook instead of fetching again
   const [stats, setStats] = useState<DashboardStats | TrainerStats | ParentStats | null>(null);
   const [announcements, setAnnouncements] = useState<Message[]>([]);
   const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start as false since user comes from useAuth
   const router = useRouter();
 
   useEffect(() => {
     const loadDashboard = async () => {
+      if (!user) return; // Wait for user from useAuth
+      
       try {
-        const currentUser = await getCurrentUser();
-        setUser(currentUser);
         
-        if (currentUser) {
-          // Load announcements for all users
-          try {
-            const messages = await getMessagesByUser(currentUser.id);
-            const activeAnnouncements = messages.filter(msg => msg.is_announcement);
+        // Load announcements in background (non-blocking)
+        getMessagesByUser(user.id)
+          .then(messages => {
+            const activeAnnouncements = (messages || []).filter((msg: Message) => msg.is_announcement);
             setAnnouncements(activeAnnouncements);
-          } catch (error) {
+          })
+          .catch(error => {
             console.error('Error loading announcements:', error);
-          }
+            setAnnouncements([]);
+          });
 
-          // Load dismissed announcements from localStorage
-          const dismissed = localStorage.getItem(`dismissed_announcements_${currentUser.id}`);
+        // Load dismissed announcements from localStorage
+        try {
+          const dismissed = localStorage.getItem(`dismissed_announcements_${user.id}`);
           if (dismissed) {
             setDismissedAnnouncements(JSON.parse(dismissed));
           }
+        } catch (error) {
+          console.error('Error loading dismissed announcements:', error);
         }
         
-        // For new dog parents, show 0 stats initially
-        // For existing users, show mock data (in real app, this would come from API)
-        if (currentUser?.role === 'admin') {
+        // Set stats immediately (non-blocking)
+        if (user.role === 'admin') {
           setStats({
             total_bookings_today: 12,
             total_dogs: 45,
@@ -59,7 +62,7 @@ export default function DashboardPage() {
             total_revenue_month: 1250000, // in cents
             pending_bookings: 5,
           });
-        } else if (currentUser?.role === 'trainer') {
+        } else if (user.role === 'trainer') {
           setStats({
             today_sessions: 4,
             total_dogs_assigned: 12,
@@ -68,7 +71,7 @@ export default function DashboardPage() {
               {
                 id: '1',
                 dog_id: '1',
-                trainer_id: currentUser.id,
+                trainer_id: user.id,
                 parent_id: '1',
                 booking_type: 'dog_training',
                 status: 'confirmed',
@@ -79,7 +82,7 @@ export default function DashboardPage() {
               }
             ],
           });
-        } else if (currentUser?.role === 'parent') {
+        } else if (user.role === 'parent') {
           // For new dog parents, show 0 stats
           setStats({
             total_dogs: 0,
@@ -89,13 +92,11 @@ export default function DashboardPage() {
         }
       } catch (error) {
         console.error('Error loading dashboard:', error);
-      } finally {
-        setLoading(false);
       }
     };
 
     loadDashboard();
-  }, []);
+  }, [user]);
 
   const dismissAnnouncement = (announcementId: string) => {
     const newDismissed = [...dismissedAnnouncements, announcementId];

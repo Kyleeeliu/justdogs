@@ -15,26 +15,33 @@ export function useAuth() {
     // Initialize session monitoring
     sessionManager.initialize();
 
-    // Initialize auth state
+    // Initialize auth state - optimized to check session first
     const initializeAuth = async () => {
       try {
-        console.log('useAuth: Initializing auth state...');
+        // Quick session check first
+        const { data: { session } } = await supabase.auth.getSession();
         
+        if (!session) {
+          // No session, skip user lookup
+          if (mounted) {
+            setUser(null);
+            setInitialized(true);
+            setLoading(false);
+          }
+          return;
+        }
+        
+        // Session exists, get user profile
         setLoading(true);
-        
         const currentUser = await getCurrentUser();
-        console.log('useAuth: getCurrentUser returned:', currentUser?.email || 'no user');
         
         if (mounted) {
           setUser(currentUser);
           setInitialized(true);
           setLoading(false);
           
-          console.log('useAuth: Auth initialized with user:', currentUser?.email || 'none');
-          
           // Start session monitoring if user is already logged in
           if (currentUser) {
-            console.log('useAuth: Starting session monitoring');
             sessionManager.startMonitoring();
           }
         }
@@ -58,17 +65,26 @@ export function useAuth() {
         if (!mounted) return;
 
         if (event === 'SIGNED_IN' && session?.user) {
-          // User signed in, get their profile
-          try {
-            const currentUser = await getCurrentUser();
-            setUser(currentUser);
-            console.log('useAuth: User signed in:', currentUser?.email);
-            // Start session monitoring after successful login
-            sessionManager.startMonitoring();
-          } catch (error) {
-            console.error('useAuth: Error getting user after sign in:', error);
-            setUser(null);
-          }
+          // User signed in, get their profile (but don't block UI)
+          setLoading(true);
+          getCurrentUser()
+            .then(currentUser => {
+              if (mounted) {
+                setUser(currentUser);
+                setLoading(false);
+                // Start session monitoring after successful login
+                if (currentUser) {
+                  sessionManager.startMonitoring();
+                }
+              }
+            })
+            .catch(error => {
+              console.error('useAuth: Error getting user after sign in:', error);
+              if (mounted) {
+                setUser(null);
+                setLoading(false);
+              }
+            });
         } else if (event === 'SIGNED_OUT') {
           // User signed out
           setUser(null);

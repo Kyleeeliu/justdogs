@@ -7,29 +7,68 @@ import { getCurrentSupabaseUser } from '../supabase/users';
 // --- Functions that use the client-side global 'supabase' (OK) ---
 
 export async function signIn(email: string, password: string) {
-    // ... (rest of signIn remains the same)
     console.log('SignIn attempt:', { email });
     
     try {
+      // Check if Supabase client is properly initialized
+      if (!supabase) {
+        throw new Error('Supabase client is not initialized. Please check your environment variables.');
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
-        console.error('Supabase signin error:', {
-          message: error.message,
-          code: error.code,
-          error
-        });
-        throw new Error(error.message);
+        // Log detailed error information
+        const errorDetails = {
+          message: error.message || 'Unknown error',
+          status: error.status || 'Unknown',
+          name: error.name || 'Unknown',
+          code: error.code || 'Unknown',
+          // Try to stringify the full error object
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+        };
+        
+        console.error('Supabase signin error:', errorDetails);
+        
+        // Provide user-friendly error messages
+        let userMessage = error.message || 'An error occurred during sign in';
+        
+        if (error.message?.includes('Invalid login credentials')) {
+          userMessage = 'Invalid email or password. Please try again.';
+        } else if (error.message?.includes('Email not confirmed')) {
+          userMessage = 'Please confirm your email address before signing in.';
+        } else if (error.message?.includes('Too many requests')) {
+          userMessage = 'Too many sign-in attempts. Please try again later.';
+        }
+        
+        throw new Error(userMessage);
       }
 
-      console.log('Sign in successful:', data.user?.email);
+      if (!data || !data.user) {
+        console.error('Sign in returned no user data:', { data });
+        throw new Error('Sign in succeeded but no user data was returned.');
+      }
+
+      console.log('Sign in successful:', data.user.email);
       return data;
     } catch (error) {
-      console.error('Sign in error:', error);
-      throw error;
+      // Enhanced error logging
+      if (error instanceof Error) {
+        console.error('Sign in error:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        });
+        throw error;
+      } else {
+        // Handle non-Error objects
+        const errorString = JSON.stringify(error, Object.getOwnPropertyNames(error));
+        console.error('Sign in error (non-Error object):', errorString);
+        throw new Error(`Sign in failed: ${errorString}`);
+      }
     }
 }
 
