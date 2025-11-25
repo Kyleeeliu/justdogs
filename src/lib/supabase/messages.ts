@@ -50,6 +50,9 @@ export const searchUsers = async (searchTerm: string): Promise<User[]> => {
 
 // Get or create a conversation between two users
 export const getOrCreateConversation = async (userId1: string, userId2: string): Promise<string> => {
+  console.log('--- DEBUG: getOrCreateConversation Called ---'); // New Line
+  console.log('User 1 (Sender?):', userId1);                      // New Line
+  console.log('User 2 (Recipient?):', userId2);                    // New Line
   try {
     // First, try to find existing conversation between these two users
     const { data: existingConversations, error: fetchError } = await supabase
@@ -622,7 +625,7 @@ export const createAnnouncement = async (
         is_announcement: true,
         target_roles: targetRoles || null,
         delivered_at: new Date().toISOString(),
-      })
+      } as any)
       .select(`
         *,
         sender:sender_id (
@@ -691,6 +694,7 @@ export const createMessage = async (
       messageData.sender_id,
       messageData.recipient_id
     );
+    console.log('DEBUG: IDs passed to getOrCreateConversation:', messageData.sender_id, messageData.recipient_id); // New Line
 
     if (!conversationId) {
       throw new Error('Failed to create or get conversation');
@@ -726,60 +730,75 @@ export const createMessage = async (
   }
 };
 
-// Legacy function - Subscribe to new messages for a user
+// Optimized Real-time Subscription
 export const subscribeToMessages = (
   userId: string,
   callback: (message: Message) => void
 ) => {
-  try {
-    return supabase
-      .channel(`user-messages:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: MESSAGES_TABLE,
-        },
-        async (payload) => {
-          const message = payload.new as any;
-          
-          // Check if this message is relevant to the user
-          const isRelevant = 
-            message.sender_id === userId ||
-            message.is_announcement ||
-            // Check if user is in the conversation
-            (message.conversation_id && await isUserInConversation(userId, message.conversation_id));
+  console.log('Setting up real-time subscription for user:', userId);
 
-          if (isRelevant) {
-            // Fetch complete message with sender info
-            const { data } = await supabase
-              .from(MESSAGES_TABLE)
-              .select(`
-                *,
-                sender:sender_id (
-                  id,
-                  full_name,
-                  email,
-                  avatar_url
-                )
-              `)
-              .eq('id', message.id)
-              .single();
+  const channel = supabase
+    .channel(`user-messages-${userId}`) // Unique channel name
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        // We do NOT filter here. We let RLS handle security, 
+        // and we filter logic client-side for speed.
+      },
+      async (payload) => {
+        const newMessage = payload.new as any;
 
-            if (data) {
-              callback(data as any);
-            }
+        // 1. FAST CHECK: Is this relevant to me?
+        // We check IDs directly. No DB query needed yet.
+        const isRelevant = 
+          newMessage.sender_id === userId || 
+          newMessage.recipient_id === userId ||
+          newMessage.is_announcement === true;
+
+        if (!isRelevant) return;
+
+        console.log('Realtime event received:', newMessage.id);
+
+        // 2. Fetch details (Sender info is needed for UI)
+        // We only do this fetch if we passed the fast check.
+        try {
+          const { data, error } = await supabase
+            .from('messages')
+            .select(`
+              *,
+              sender:sender_id (
+                id,
+                full_name,
+                email,
+                avatar_url
+              ),
+              attachments:message_attachments (*)
+            `)
+            .eq('id', newMessage.id)
+            .single();
+
+          if (!error && data) {
+            callback(data as any);
           }
+        } catch (fetchError) {
+          console.error('Error fetching details for new message:', fetchError);
+          // Fallback: send the raw message so UI at least updates
+          callback(newMessage); 
         }
-      )
-      .subscribe();
-  } catch (error) {
-    console.error('Error setting up message subscription:', error);
-    return {
-      unsubscribe: () => {}
-    };
-  }
+      }
+    )
+    .subscribe((status) => {
+      console.log(`Subscription status for ${userId}:`, status);
+    });
+
+  return {
+    unsubscribe: () => {
+      supabase.removeChannel(channel);
+    }
+  };
 };
 
 // Helper function to check if user is in a conversation
