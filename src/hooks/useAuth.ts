@@ -70,20 +70,20 @@ export function useAuth() {
           getCurrentUser()
             .then(currentUser => {
               if (mounted) {
-                setUser(currentUser);
+            setUser(currentUser);
                 setLoading(false);
-                // Start session monitoring after successful login
+            // Start session monitoring after successful login
                 if (currentUser) {
-                  sessionManager.startMonitoring();
+            sessionManager.startMonitoring();
                 }
               }
             })
             .catch(error => {
-              console.error('useAuth: Error getting user after sign in:', error);
+            console.error('useAuth: Error getting user after sign in:', error);
               if (mounted) {
-                setUser(null);
+            setUser(null);
                 setLoading(false);
-              }
+          }
             });
         } else if (event === 'SIGNED_OUT') {
           // User signed out

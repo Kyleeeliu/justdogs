@@ -8,24 +8,33 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { getCurrentUser } from '@/lib/auth/auth';
 import { User, ApprovalStatus } from '@/types';
-import { 
-  getAllNewsItems, 
-  updateNewsItem, 
-  addNewsItem, 
-  deleteNewsItem,
-  getAllServices,
-  updateService,
-  addService,
-  deleteService,
-  getAllTeamMembers,
-  updateTeamMember,
-  addTeamMember,
-  deleteTeamMember
+import {
+  getAllNewsItems,
+  updateNewsItem,
+  addNewsItem,
+  deleteNewsItem
 } from '@/lib/data/content';
-import { 
-  PlusIcon, 
-  PencilIcon, 
-  TrashIcon, 
+import {
+  getAllServices as getSupabaseServices,
+  addService as addSupabaseService,
+  updateService as updateSupabaseService,
+  deleteService as deleteSupabaseService,
+  getAllTeamMembers as getSupabaseTeamMembers,
+  addTeamMember as addSupabaseTeamMember,
+  updateTeamMember as updateSupabaseTeamMember,
+  deleteTeamMember as deleteSupabaseTeamMember,
+  getAllGalleryImages,
+  addGalleryImage,
+  updateGalleryImage,
+  deleteGalleryImage,
+  type ServiceItem,
+  type TeamMember,
+  type GalleryImage
+} from '@/lib/supabase/content';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
   CalendarIcon,
   NewspaperIcon,
   UsersIcon,
@@ -66,6 +75,7 @@ export default function ContentManagementPage() {
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
   const [pendingTrainers, setPendingTrainers] = useState<User[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
@@ -77,12 +87,12 @@ export default function ContentManagementPage() {
       try {
         const currentUser = await getCurrentUser();
         setUser(currentUser);
-        
+
         if (!currentUser) {
           router.push('/login');
           return;
         }
-        
+
         if (currentUser.role !== 'admin') {
           router.push('/dashboard');
           return;
@@ -115,13 +125,13 @@ export default function ContentManagementPage() {
           setNewsItems(
             Array.isArray(data)
               ? data.map((n: any) => ({
-                  id: String(n.id),
-                  title: n.title ?? '',
-                  content: n.content ?? '',
-                  date: n.date ? (typeof n.date === 'string' ? n.date : new Date(n.date).toISOString().split('T')[0]) : '',
-                  type: n.type ?? 'news',
-                  published: !!n.published
-                }))
+                id: String(n.id),
+                title: n.title ?? '',
+                content: n.content ?? '',
+                date: n.date ? (typeof n.date === 'string' ? n.date : new Date(n.date).toISOString().split('T')[0]) : '',
+                type: n.type ?? 'news',
+                published: !!n.published
+              }))
               : []
           );
         }
@@ -129,7 +139,7 @@ export default function ContentManagementPage() {
         // keep services/team using existing in-memory helpers for now
         setServices(getAllServices());
         setTeamMembers(getAllTeamMembers());
-        
+
         // Load pending trainers from localStorage
         loadPendingTrainers();
       } catch (error) {
@@ -143,7 +153,7 @@ export default function ContentManagementPage() {
   // Function to load pending trainers from localStorage
   const loadPendingTrainers = () => {
     const pending: User[] = [];
-    
+
     // Check localStorage for pending trainers
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -161,7 +171,7 @@ export default function ContentManagementPage() {
         }
       }
     }
-    
+
     setPendingTrainers(pending);
   };
 
@@ -170,34 +180,34 @@ export default function ContentManagementPage() {
     try {
       const trainerKey = `pendingTrainer_${email}`;
       const trainerData = localStorage.getItem(trainerKey);
-      
+
       if (!trainerData) {
         console.error('Trainer data not found');
         return;
       }
-      
+
       const trainer = JSON.parse(trainerData);
-      
+
       if (action === 'approve') {
         // Update trainer status to approved
         trainer.approval_status = 'approved';
-        
+
         // Move from pending to approved - store as regular user
         localStorage.setItem(`newUser_${email}`, JSON.stringify(trainer));
         localStorage.removeItem(trainerKey);
-        
+
         console.log('Trainer approved:', trainer);
       } else {
         // Update trainer status to rejected
         trainer.approval_status = 'rejected';
         localStorage.setItem(trainerKey, JSON.stringify(trainer));
-        
+
         console.log('Trainer rejected:', trainer);
       }
-      
+
       // Reload pending trainers
       loadPendingTrainers();
-      
+
     } catch (error) {
       console.error('Error handling trainer approval:', error);
     }
@@ -226,7 +236,7 @@ export default function ContentManagementPage() {
             <p className="text-gray-600 mb-6">
               You don't have permission to access this page. Only administrators can manage content.
             </p>
-            <Button 
+            <Button
               onClick={() => router.push('/dashboard')}
               className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
             >
@@ -254,60 +264,120 @@ export default function ContentManagementPage() {
           return;
         }
         setNewsItems((prev) => prev.filter((i) => i.id !== id));
-      } else {
-        // keep existing in-memory behavior for services/team
-        let success = false;
-        switch (type) {
-          case 'services':
-            success = deleteService(id);
-            if (success) setServices(getAllServices());
-            break;
-          case 'team':
-            success = deleteTeamMember(id);
-            if (success) setTeamMembers(getAllTeamMembers());
-            break;
-        }
-        if (!success) console.error('Failed to delete item');
+      } else if (type === 'services') {
+        await deleteSupabaseService(id);
+        const updated = await getSupabaseServices();
+        setServices(updated);
+      } else if (type === 'team') {
+        await deleteSupabaseTeamMember(id);
+        const updated = await getSupabaseTeamMembers();
+        setTeamMembers(updated);
+      } else if (type === 'gallery') {
+        await deleteGalleryImage(id);
+        const updated = await getAllGalleryImages();
+        setGalleryImages(updated);
       }
     } catch (error) {
       console.error('Error deleting item:', error);
+      alert('Failed to delete item. Please try again.');
     }
   };
 
-  async function handleSave(newItem: { id?: string; title?: string; content?: string; date?: string; type: string; published?: boolean }) {
+  async function handleSave(newItem: any) {
     try {
-      const method = newItem.id ? 'PATCH' : 'POST';
-      const res = await fetch('/api/news', {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newItem)
-      });
+      if (newItem.type === 'news') {
+        const method = newItem.id ? 'PATCH' : 'POST';
+        const res = await fetch('/api/news', {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newItem)
+        });
 
-      const body = await res.json();
+        const body = await res.json();
 
-      if (!res.ok) {
-        console.error(`${method} /api/news failed:`, body);
-        return;
-      }
+        if (!res.ok) {
+          console.error(`${method} /api/news failed:`, body);
+          return;
+        }
 
-      const saved = body;
-      if (method === 'POST') {
-        setNewsItems((prev) => [saved, ...prev]);
-      } else {
-        setNewsItems((prev) => prev.map((i) => (i.id === String(saved.id) ? {
-          id: String(saved.id),
-          title: saved.title ?? '',
-          content: saved.content ?? '',
-          date: saved.date ? (typeof saved.date === 'string' ? saved.date : new Date(saved.date).toISOString().split('T')[0]) : '',
-          type: saved.type ?? 'news',
-          published: !!saved.published
-        } : i)));
+        const saved = body;
+        if (method === 'POST') {
+          setNewsItems((prev) => [saved, ...prev]);
+        } else {
+          setNewsItems((prev) => prev.map((i) => (i.id === String(saved.id) ? {
+            id: String(saved.id),
+            title: saved.title ?? '',
+            content: saved.content ?? '',
+            date: saved.date ? (typeof saved.date === 'string' ? saved.date : new Date(saved.date).toISOString().split('T')[0]) : '',
+            type: saved.type ?? 'news',
+            published: !!saved.published
+          } : i)));
+        }
+      } else if (newItem.type === 'services') {
+        if (newItem.id) {
+          await updateSupabaseService(newItem.id, {
+            name: newItem.name,
+            description: newItem.description,
+            category: newItem.category,
+            active: newItem.active,
+          });
+        } else {
+          await addSupabaseService({
+            name: newItem.name,
+            description: newItem.description,
+            category: newItem.category,
+            active: newItem.active,
+          });
+        }
+        const updated = await getSupabaseServices();
+        setServices(updated);
+      } else if (newItem.type === 'team') {
+        if (newItem.id) {
+          await updateSupabaseTeamMember(newItem.id, {
+            name: newItem.name,
+            role: newItem.role,
+            bio: newItem.bio,
+            active: newItem.active,
+          });
+        } else {
+          await addSupabaseTeamMember({
+            name: newItem.name,
+            role: newItem.role,
+            bio: newItem.bio,
+            active: newItem.active,
+          });
+        }
+        const updated = await getSupabaseTeamMembers();
+        setTeamMembers(updated);
+      } else if (newItem.type === 'gallery') {
+        if (newItem.id) {
+          await updateGalleryImage(newItem.id, {
+            image_url: newItem.image_url,
+            title: newItem.title,
+            description: newItem.description,
+            dog_name: newItem.dog_name,
+            display_order: newItem.display_order || 0,
+            active: newItem.active,
+          });
+        } else {
+          await addGalleryImage({
+            image_url: newItem.image_url,
+            title: newItem.title,
+            description: newItem.description,
+            dog_name: newItem.dog_name,
+            display_order: newItem.display_order || 0,
+            active: newItem.active,
+          });
+        }
+        const updated = await getAllGalleryImages();
+        setGalleryImages(updated);
       }
 
       setShowForm(false);
       setEditingItem(null);
     } catch (err) {
-      console.error('Error creating/updating news item:', err);
+      console.error('Error saving item:', err);
+      alert('Failed to save item. Please try again.');
     }
   }
 
@@ -315,7 +385,7 @@ export default function ContentManagementPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">News & Events Management</h2>
-        <Button 
+        <Button
           onClick={() => handleEdit({ type: 'news' }, 'news')}
           className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
         >
@@ -323,7 +393,7 @@ export default function ContentManagementPage() {
           Add News Item
         </Button>
       </div>
-      
+
       <div className="grid gap-4">
         {newsItems.map((item) => (
           <Card key={item.id} className="hover:shadow-md transition-shadow">
@@ -331,16 +401,14 @@ export default function ContentManagementPage() {
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      item.type === 'news' ? 'bg-blue-100 text-blue-800' :
-                      item.type === 'event' ? 'bg-green-100 text-green-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
+                    <span className={`px-2 py-1 text-xs rounded-full ${item.type === 'news' ? 'bg-blue-100 text-blue-800' :
+                        item.type === 'event' ? 'bg-green-100 text-green-800' :
+                          'bg-yellow-100 text-yellow-800'
+                      }`}>
                       {item.type}
                     </span>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      item.published ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
+                    <span className={`px-2 py-1 text-xs rounded-full ${item.published ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
                       {item.published ? 'Published' : 'Draft'}
                     </span>
                   </div>
@@ -377,7 +445,7 @@ export default function ContentManagementPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Services Management</h2>
-        <Button 
+        <Button
           onClick={() => handleEdit({ type: 'services' }, 'services')}
           className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
         >
@@ -385,7 +453,7 @@ export default function ContentManagementPage() {
           Add Service
         </Button>
       </div>
-      
+
       <div className="grid gap-4">
         {services.map((service) => (
           <Card key={service.id} className="hover:shadow-md transition-shadow">
@@ -396,9 +464,8 @@ export default function ContentManagementPage() {
                     <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 capitalize">
                       {service.category}
                     </span>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      service.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
+                    <span className={`px-2 py-1 text-xs rounded-full ${service.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
                       {service.active ? 'Active' : 'Inactive'}
                     </span>
                   </div>
@@ -434,7 +501,7 @@ export default function ContentManagementPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Team Management</h2>
-        <Button 
+        <Button
           onClick={() => handleEdit({ type: 'team' }, 'team')}
           className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
         >
@@ -442,7 +509,7 @@ export default function ContentManagementPage() {
           Add Team Member
         </Button>
       </div>
-      
+
       <div className="grid gap-4">
         {teamMembers.map((member) => (
           <Card key={member.id} className="hover:shadow-md transition-shadow">
@@ -450,9 +517,8 @@ export default function ContentManagementPage() {
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      member.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
+                    <span className={`px-2 py-1 text-xs rounded-full ${member.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
                       {member.active ? 'Active' : 'Inactive'}
                     </span>
                   </div>
@@ -489,20 +555,78 @@ export default function ContentManagementPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Gallery Management</h2>
-        <Button 
-          onClick={() => {/* TODO: Implement gallery upload */}}
+        <Button
+          onClick={() => handleEdit({ type: 'gallery' }, 'gallery')}
           className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
         >
           <PlusIcon className="h-4 w-4 mr-2" />
-          Upload Images
+          Add Image
         </Button>
       </div>
-      
-      <div className="text-center py-12 text-gray-500">
-        <PhotoIcon className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-        <p>Gallery management coming soon...</p>
-        <p className="text-sm">Upload and manage dog photos for the gallery page</p>
-      </div>
+
+      {galleryImages.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <PhotoIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Gallery Images</h3>
+            <p className="text-gray-600">Add images to showcase happy dogs on the gallery page.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {galleryImages.map((image) => (
+            <Card key={image.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-0">
+                <div className="relative aspect-square">
+                  <img
+                    src={image.image_url}
+                    alt={image.title || image.dog_name || 'Gallery image'}
+                    className="w-full h-full object-cover rounded-t-lg"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/api/placeholder/400/400';
+                    }}
+                  />
+                  {!image.active && (
+                    <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs">
+                      Inactive
+                    </div>
+                  )}
+                </div>
+                <div className="p-4">
+                  {image.title && (
+                    <h3 className="font-semibold text-gray-900 mb-1">{image.title}</h3>
+                  )}
+                  {image.dog_name && (
+                    <p className="text-sm text-gray-600 mb-2">Dog: {image.dog_name}</p>
+                  )}
+                  {image.description && (
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{image.description}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEdit(image, 'gallery')}
+                      className="flex-1"
+                    >
+                      <PencilIcon className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDelete(image.id, 'gallery')}
+                      className="text-red-600 border-red-600 hover:bg-red-50"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -514,7 +638,7 @@ export default function ContentManagementPage() {
           {pendingTrainers.length} pending approval{pendingTrainers.length !== 1 ? 's' : ''}
         </div>
       </div>
-      
+
       {pendingTrainers.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
@@ -595,11 +719,10 @@ export default function ContentManagementPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.id
+              className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
                   ? 'border-[rgb(0_32_96)] text-[rgb(0_32_96)]'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
             >
               <tab.icon className="h-5 w-5 mr-2" />
               {tab.name}
@@ -621,14 +744,14 @@ export default function ContentManagementPage() {
           <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border-0 bg-white/95 backdrop-blur-sm">
             <CardHeader>
               <CardTitle>
-                {editingItem?.id ? 'Edit' : 'Add'} {editingItem?.type === 'news' ? 'News Item' : 
-                 editingItem?.type === 'services' ? 'Service' : 'Team Member'}
+                {editingItem?.id ? 'Edit' : 'Add'} {editingItem?.type === 'news' ? 'News Item' :
+                  editingItem?.type === 'services' ? 'Service' : 'Team Member'}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ContentForm 
-                item={editingItem} 
-                onSave={handleSave} 
+              <ContentForm
+                item={editingItem}
+                onSave={handleSave}
                 onCancel={() => { setShowForm(false); setEditingItem(null); }}
               />
             </CardContent>

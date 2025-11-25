@@ -5,8 +5,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  PlusIcon, 
+import {
+  PlusIcon,
   MagnifyingGlassIcon,
   ChatBubbleLeftRightIcon,
   UserGroupIcon,
@@ -23,11 +23,13 @@ import { CheckIcon as CheckCheckIcon } from '@heroicons/react/24/solid';
 import { getCurrentUser } from '@/lib/auth/auth';
 import { Message, User, UserRole } from '@/types';
 import { formatDateTime, formatTime } from '@/lib/utils';
-import { getAllUsers } from '@/lib/supabase/users';
-import { 
-  createMessage, 
-  getMessagesByUser, 
-  subscribeToMessages, 
+import { getAllUsers, getUsersByRole } from '@/lib/supabase/users';
+import { getAllServices } from '@/lib/supabase/content';
+import { defaultServices } from '@/lib/data/content';
+import {
+  createMessage,
+  getMessagesByUser,
+  subscribeToMessages,
   markMessageAsRead
 } from '@/lib/supabase/messages';
 
@@ -65,8 +67,17 @@ export default function MessagesPage() {
   const [announcementData, setAnnouncementData] = useState({
     subject: '',
     content: '',
-    target_roles: [] as UserRole[]
+    target_roles: [] as UserRole[],
+    filters: {
+      service_types: [] as string[],
+      service_categories: [] as string[],
+      trainer_ids: [] as string[],
+      next_service_before: '',
+      next_service_after: '',
+    }
   });
+  const [trainers, setTrainers] = useState<User[]>([]);
+  const [services, setServices] = useState<any[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -85,44 +96,59 @@ export default function MessagesPage() {
 
       try {
         console.log('Loading messages page...');
-        
+
         // Load user with timeout
         const userPromise = getCurrentUser();
         const timeoutPromise = new Promise<User | null>((resolve) => {
           setTimeout(() => resolve(null), 5000);
         });
         const user = await Promise.race([userPromise, timeoutPromise]);
-        
+
         console.log('Current user:', user?.email || 'none');
-        
+
         if (!mounted) {
           clearTimeout(timeoutId);
           return;
         }
-        
+
         setCurrentUser(user);
-        
+
         if (user) {
           // Load available users for chat
           const users = await getAllUsers();
           if (mounted) {
             setAvailableUsers(users.filter(u => u.id !== user.id));
           }
-          
+
+          // Load trainers and services for admin announcement filters
+          if (user.role === 'admin') {
+            try {
+              const trainersList = await getUsersByRole('trainer');
+              const servicesList = await getAllServices();
+              if (mounted) {
+                setTrainers(trainersList);
+                // Fallback to default services if Supabase returns empty (likely due to error or empty DB)
+                setServices(servicesList.length > 0 ? servicesList : defaultServices);
+              }
+            } catch (error) {
+              console.error('Error loading filters data:', error);
+            }
+          }
+
           // Load messages and create mock conversations
           const userMessages = await getMessagesByUser(user.id);
           if (mounted) {
             setMessages(userMessages);
           }
-          
+
           // Create mock conversations from messages
           const conversationMap = new Map<string, MockConversation>();
-          
+
           userMessages.forEach(message => {
             let conversationKey: string; // Key for the map
             let conversationId: string; // The actual conversation_id UUID or fallback ID
             let otherParticipant: string;
-            
+
             if (message.is_announcement) {
               conversationKey = 'announcements';
               conversationId = 'announcements';
@@ -132,7 +158,7 @@ export default function MessagesPage() {
               conversationKey = message.conversation_id;
               conversationId = message.conversation_id;
               // Find the other participant from the message
-              otherParticipant = message.sender_id === user.id 
+              otherParticipant = message.sender_id === user.id
                 ? (message.recipient_id || 'unknown')
                 : message.sender_id;
             } else if (message.sender_id === user.id) {
@@ -146,7 +172,7 @@ export default function MessagesPage() {
               conversationId = message.sender_id;
               otherParticipant = message.sender_id;
             }
-            
+
             if (!conversationMap.has(conversationKey)) {
               const otherUser = users.find(u => u.id === otherParticipant);
               conversationMap.set(conversationKey, {
@@ -160,47 +186,47 @@ export default function MessagesPage() {
                 unreadCount: 0
               });
             }
-            
+
             const conversation = conversationMap.get(conversationKey)!;
             if (new Date(message.created_at) > new Date(conversation.lastMessageTime || '')) {
               conversation.lastMessage = message.content;
               conversation.lastMessageTime = message.created_at;
             }
-            
+
             if (!message.read_at && message.sender_id !== user.id) {
               conversation.unreadCount++;
             }
           });
-          
+
           if (mounted) {
-            setConversations(Array.from(conversationMap.values()).sort((a, b) => 
+            setConversations(Array.from(conversationMap.values()).sort((a, b) =>
               new Date(b.lastMessageTime || '').getTime() - new Date(a.lastMessageTime || '').getTime()
             ));
           }
-          
+
           // Subscribe to real-time message updates
           try {
             subscription = subscribeToMessages(user.id, async (newMessage) => {
               if (mounted) {
                 console.log('New message received via subscription:', newMessage.id);
-                
+
                 // Reload all messages to ensure consistency
                 try {
                   const updatedMessages = await getMessagesByUser(user.id);
                   setMessages(updatedMessages);
-                  
+
                   // Rebuild conversations from updated messages
                   const updatedConversationMap = new Map<string, MockConversation>();
                   updatedMessages.forEach(msg => {
                     let convId: string;
                     let otherParticipant: string;
-                    
+
                     if (msg.is_announcement) {
                       convId = 'announcements';
                       otherParticipant = 'System';
                     } else if (msg.conversation_id) {
                       convId = msg.conversation_id;
-                      otherParticipant = msg.sender_id === user.id 
+                      otherParticipant = msg.sender_id === user.id
                         ? (msg.recipient_id || 'unknown')
                         : msg.sender_id;
                     } else if (msg.sender_id === user.id) {
@@ -210,7 +236,7 @@ export default function MessagesPage() {
                       convId = msg.sender_id;
                       otherParticipant = msg.sender_id;
                     }
-                    
+
                     if (!updatedConversationMap.has(convId)) {
                       const otherUser = availableUsers.find(u => u.id === otherParticipant);
                       updatedConversationMap.set(convId, {
@@ -224,22 +250,22 @@ export default function MessagesPage() {
                         unreadCount: 0
                       });
                     }
-                    
+
                     const conv = updatedConversationMap.get(convId)!;
                     if (new Date(msg.created_at) > new Date(conv.lastMessageTime || '')) {
                       conv.lastMessage = msg.content;
                       conv.lastMessageTime = msg.created_at;
                     }
-                    
+
                     if (!msg.read_at && msg.sender_id !== user.id) {
                       conv.unreadCount++;
                     }
                   });
-                  
-                  setConversations(Array.from(updatedConversationMap.values()).sort((a, b) => 
+
+                  setConversations(Array.from(updatedConversationMap.values()).sort((a, b) =>
                     new Date(b.lastMessageTime || '').getTime() - new Date(a.lastMessageTime || '').getTime()
                   ));
-                  
+
                   // Scroll to bottom if this message is in the currently selected conversation
                   if (selectedConversation && (
                     newMessage.conversation_id === selectedConversation.id ||
@@ -299,7 +325,7 @@ export default function MessagesPage() {
 
   const handleConversationSelect = async (conversation: MockConversation) => {
     setSelectedConversation(conversation);
-    
+
     // Reload messages to ensure we have the latest
     if (currentUser) {
       try {
@@ -309,14 +335,14 @@ export default function MessagesPage() {
         console.error('Error reloading messages on conversation select:', error);
       }
     }
-    
+
     // Mark messages as read (will be done after messages reload)
     setTimeout(async () => {
       const conversationMessages = getConversationMessages();
       const unreadMessages = conversationMessages.filter(
         msg => !msg.read_at && msg.sender_id !== currentUser?.id
       );
-      
+
       for (const msg of unreadMessages) {
         try {
           await markMessageAsRead(msg.id);
@@ -324,10 +350,10 @@ export default function MessagesPage() {
           console.error('Error marking message as read:', error);
         }
       }
-      
+
       // Update local state
-      setMessages(prev => prev.map(msg => 
-        unreadMessages.some(unread => unread.id === msg.id) 
+      setMessages(prev => prev.map(msg =>
+        unreadMessages.some(unread => unread.id === msg.id)
           ? { ...msg, read_at: new Date().toISOString() }
           : msg
       ));
@@ -347,15 +373,27 @@ export default function MessagesPage() {
     setMessageInput(''); // Clear input immediately for better UX
 
     try {
+      // Get the recipient user ID - use otherUserId if available, otherwise fall back to id
+      // otherUserId is the actual user ID, while id might be a conversation UUID
+      const recipientId = selectedConversation.otherUserId || selectedConversation.id;
+      
+      // Don't use conversation UUID as recipient_id - it should be a user ID
+      if (selectedConversation.conversationId && !selectedConversation.otherUserId) {
+        console.error('Cannot send message: conversation has no otherUserId');
+        alert('Error: Cannot determine recipient. Please select a conversation.');
+        return;
+      }
+
       console.log('Sending message:', {
         sender_id: currentUser.id,
-        recipient_id: selectedConversation.id,
+        recipient_id: recipientId,
+        conversation_id: selectedConversation.conversationId,
         content_length: messageContent.length,
       });
 
       const messageData = {
         sender_id: currentUser.id,
-        recipient_id: selectedConversation.id,
+        recipient_id: recipientId,
         subject: '', // Chat messages don't need subjects
         content: messageContent,
         is_announcement: false,
@@ -363,28 +401,28 @@ export default function MessagesPage() {
       };
 
       const newMessage = await createMessage(messageData);
-      
+
       if (newMessage) {
         console.log('Message sent successfully:', newMessage.id);
-        
+
         // Reload messages to ensure we have the latest from database
         if (currentUser) {
           try {
             const updatedMessages = await getMessagesByUser(currentUser.id);
             setMessages(updatedMessages);
-            
+
             // Update conversations list with latest messages
             const updatedConversationMap = new Map<string, MockConversation>();
             updatedMessages.forEach(msg => {
               let convId: string;
               let otherParticipant: string;
-              
+
               if (msg.is_announcement) {
                 convId = 'announcements';
                 otherParticipant = 'System';
               } else if (msg.conversation_id) {
                 convId = msg.conversation_id;
-                otherParticipant = msg.sender_id === currentUser.id 
+                otherParticipant = msg.sender_id === currentUser.id
                   ? (msg.recipient_id || 'unknown')
                   : msg.sender_id;
               } else if (msg.sender_id === currentUser.id) {
@@ -394,7 +432,7 @@ export default function MessagesPage() {
                 convId = msg.sender_id;
                 otherParticipant = msg.sender_id;
               }
-              
+
               if (!updatedConversationMap.has(convId)) {
                 const otherUser = availableUsers.find(u => u.id === otherParticipant);
                 updatedConversationMap.set(convId, {
@@ -408,36 +446,36 @@ export default function MessagesPage() {
                   unreadCount: 0
                 });
               }
-              
+
               const conv = updatedConversationMap.get(convId)!;
               if (new Date(msg.created_at) > new Date(conv.lastMessageTime || '')) {
                 conv.lastMessage = msg.content;
                 conv.lastMessageTime = msg.created_at;
               }
-              
+
               if (!msg.read_at && msg.sender_id !== currentUser.id) {
                 conv.unreadCount++;
               }
             });
-            
-            setConversations(Array.from(updatedConversationMap.values()).sort((a, b) => 
+
+            setConversations(Array.from(updatedConversationMap.values()).sort((a, b) =>
               new Date(b.lastMessageTime || '').getTime() - new Date(a.lastMessageTime || '').getTime()
             ));
-            
+
             // Ensure the selected conversation is still selected (in case ID changed)
             // Try to find by conversation_id UUID first, then by other user ID
-            let updatedConv = newMessage.conversation_id 
+            let updatedConv = newMessage.conversation_id
               ? Array.from(updatedConversationMap.values()).find(c => c.conversationId === newMessage.conversation_id)
               : null;
-            
+
             if (!updatedConv) {
               // Fallback: find by other user ID
-              updatedConv = Array.from(updatedConversationMap.values()).find(c => 
-                c.otherUserId === selectedConversation.otherUserId || 
+              updatedConv = Array.from(updatedConversationMap.values()).find(c =>
+                c.otherUserId === selectedConversation.otherUserId ||
                 c.id === selectedConversation.id
               );
             }
-            
+
             if (updatedConv) {
               console.log('Updated selected conversation:', updatedConv);
               setSelectedConversation(updatedConv);
@@ -457,13 +495,13 @@ export default function MessagesPage() {
             });
           }
         }
-        
+
         // Scroll to bottom to show new message
         setTimeout(() => scrollToBottom(), 200);
       } else {
         throw new Error('Message was not created');
       }
-      
+
       setAttachments([]);
     } catch (error) {
       console.error('Error sending message:', error);
@@ -485,7 +523,7 @@ export default function MessagesPage() {
         participantNames: [selectedUser.full_name],
         unreadCount: 0
       };
-      
+
       setConversations(prev => [newConversation, ...prev]);
       setSelectedConversation(newConversation);
       setShowNewChatModal(false);
@@ -498,15 +536,45 @@ export default function MessagesPage() {
     if (!announcementData.subject.trim() || !announcementData.content.trim() || !currentUser) return;
 
     try {
+      // Build filters object (only include non-empty filters)
+      const filters: any = {};
+      if (announcementData.filters.service_types.length > 0) {
+        filters.service_types = announcementData.filters.service_types;
+      }
+      if (announcementData.filters.service_categories.length > 0) {
+        filters.service_categories = announcementData.filters.service_categories;
+      }
+      if (announcementData.filters.trainer_ids.length > 0) {
+        filters.trainer_ids = announcementData.filters.trainer_ids;
+      }
+      if (announcementData.filters.next_service_before) {
+        filters.next_service_before = announcementData.filters.next_service_before;
+      }
+      if (announcementData.filters.next_service_after) {
+        filters.next_service_after = announcementData.filters.next_service_after;
+      }
+
       await createMessage({
         sender_id: currentUser.id,
         subject: announcementData.subject,
         content: announcementData.content,
         is_announcement: true,
-        target_roles: announcementData.target_roles.length > 0 ? announcementData.target_roles : undefined
-      });
+        target_roles: announcementData.target_roles.length > 0 ? announcementData.target_roles : undefined,
+        filters: Object.keys(filters).length > 0 ? filters : undefined
+      } as any);
 
-      setAnnouncementData({ subject: '', content: '', target_roles: [] });
+      setAnnouncementData({
+        subject: '',
+        content: '',
+        target_roles: [],
+        filters: {
+          service_types: [],
+          service_categories: [],
+          trainer_ids: [],
+          next_service_before: '',
+          next_service_after: '',
+        }
+      });
       setShowAnnouncementModal(false);
       alert('Announcement sent successfully!');
     } catch (error) {
@@ -530,7 +598,7 @@ export default function MessagesPage() {
   );
 
   const filteredConversations = conversations.filter(conv =>
-    conv.participantNames.some(name => 
+    conv.participantNames.some(name =>
       name.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
@@ -541,11 +609,11 @@ export default function MessagesPage() {
 
   const getConversationMessages = () => {
     if (!selectedConversation) return [];
-    
+
     if (selectedConversation.id === 'announcements') {
       return messages.filter(msg => msg.is_announcement);
     }
-    
+
     console.log('Filtering messages for conversation:', {
       conversationId: selectedConversation.id,
       conversationIdUUID: selectedConversation.conversationId,
@@ -553,32 +621,32 @@ export default function MessagesPage() {
       totalMessages: messages.length,
       currentUserId: currentUser?.id
     });
-    
+
     // Filter messages by conversation_id (new system) or sender/recipient (old system)
     const filtered = messages.filter(msg => {
       if (msg.is_announcement) return false;
-      
+
       // Check if message belongs to this conversation by conversation_id UUID
       if (selectedConversation.conversationId && msg.conversation_id === selectedConversation.conversationId) {
         console.log('Matched by conversation_id UUID:', msg.id);
         return true;
       }
-      
+
       // Check if message belongs to this conversation by conversation_id matching selectedConversation.id
       if (msg.conversation_id === selectedConversation.id) {
         console.log('Matched by conversation_id (selectedConversation.id):', msg.id);
         return true;
       }
-      
+
       // Check by other user ID
       if (selectedConversation.otherUserId) {
         if ((msg.sender_id === currentUser?.id && msg.recipient_id === selectedConversation.otherUserId) ||
-            (msg.sender_id === selectedConversation.otherUserId && msg.recipient_id === currentUser?.id)) {
+          (msg.sender_id === selectedConversation.otherUserId && msg.recipient_id === currentUser?.id)) {
           console.log('Matched by otherUserId:', msg.id);
           return true;
         }
       }
-      
+
       // Fallback: Check by sender/recipient (for backward compatibility)
       if (msg.sender_id === currentUser?.id && msg.recipient_id === selectedConversation.id) {
         console.log('Matched by sender/recipient (fallback 1):', msg.id);
@@ -588,10 +656,10 @@ export default function MessagesPage() {
         console.log('Matched by sender/recipient (fallback 2):', msg.id);
         return true;
       }
-      
+
       return false;
     });
-    
+
     console.log('Filtered messages count:', filtered.length);
     filtered.forEach(msg => {
       console.log('Message:', {
@@ -602,13 +670,13 @@ export default function MessagesPage() {
         content: msg.content.substring(0, 50)
       });
     });
-    
+
     return filtered.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   };
 
   const getMessageStatus = (message: Message) => {
     if (message.sender_id !== currentUser?.id) return null;
-    
+
     if (message.read_at) {
       return <CheckCheckIcon className="h-4 w-4 text-blue-500" />;
     } else {
@@ -678,9 +746,8 @@ export default function MessagesPage() {
               <div
                 key={conversation.id}
                 onClick={() => handleConversationSelect(conversation)}
-                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                  selectedConversation?.id === conversation.id ? 'bg-blue-50 border-l-4 border-l-[rgb(0_32_96)]' : ''
-                }`}
+                className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${selectedConversation?.id === conversation.id ? 'bg-blue-50 border-l-4 border-l-[rgb(0_32_96)]' : ''
+                  }`}
               >
                 <div className="flex items-center space-x-3">
                   <div className="w-12 h-12 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
@@ -761,26 +828,25 @@ export default function MessagesPage() {
                     className={`flex ${message.sender_id === currentUser?.id ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        message.sender_id === currentUser?.id
+                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.sender_id === currentUser?.id
                           ? 'bg-[rgb(0_32_96)] text-white'
                           : 'bg-gray-100 text-gray-900'
-                      }`}
+                        }`}
                     >
                       {message.sender_id !== currentUser?.id && !message.is_announcement && (
                         <p className="text-xs font-medium mb-1 opacity-70">
                           {availableUsers.find(u => u.id === message.sender_id)?.full_name || 'Unknown'}
                         </p>
                       )}
-                      
+
                       {message.is_announcement && (
                         <p className="text-xs font-medium mb-1 opacity-70">
                           📢 {message.subject}
                         </p>
                       )}
-                      
+
                       <p className="whitespace-pre-wrap">{message.content}</p>
-                      
+
                       <div className="flex items-center justify-between mt-1">
                         <span className="text-xs opacity-70">
                           {formatTime(message.created_at)}
@@ -850,7 +916,7 @@ export default function MessagesPage() {
                         <PaperClipIcon className="h-5 w-5 text-gray-500" />
                       </Button>
                     </div>
-                    
+
                     <div className="flex-1">
                       <Input
                         value={messageInput}
@@ -860,7 +926,7 @@ export default function MessagesPage() {
                         className="border-gray-200 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] text-gray-900 bg-white"
                       />
                     </div>
-                    
+
                     <Button
                       onClick={handleSendMessage}
                       disabled={!messageInput.trim() && attachments.length === 0}
@@ -916,7 +982,7 @@ export default function MessagesPage() {
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
               </Button>
             </div>
-            
+
             <div className="p-6 space-y-4">
               {/* User Search */}
               <div className="relative">
@@ -980,7 +1046,7 @@ export default function MessagesPage() {
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
               </Button>
             </div>
-            
+
             <div className="p-6 space-y-6">
               {/* Subject */}
               <div className="space-y-2">
@@ -1019,6 +1085,133 @@ export default function MessagesPage() {
                   Select specific roles to target, or leave all unchecked to send to everyone.
                 </p>
               </div>
+
+              {/* Advanced Filters (Admin only) */}
+              {currentUser?.role === 'admin' && (
+                <div className="space-y-4 border-t border-gray-200 pt-4">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-semibold text-gray-700">Advanced Filters</label>
+                    <span className="text-xs text-gray-500">Optional - refine your audience</span>
+                  </div>
+
+                  {/* Service Categories Filter */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Service Categories</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['behaviour', 'farm', 'academy', 'service'] as const).map(category => (
+                        <label key={category} className="flex items-center cursor-pointer p-2 bg-gray-50 rounded hover:bg-gray-100">
+                          <input
+                            type="checkbox"
+                            checked={announcementData.filters.service_categories.includes(category)}
+                            onChange={(e) => {
+                              const newCategories = e.target.checked
+                                ? [...announcementData.filters.service_categories, category]
+                                : announcementData.filters.service_categories.filter(c => c !== category);
+                              setAnnouncementData(prev => ({
+                                ...prev,
+                                filters: { ...prev.filters, service_categories: newCategories }
+                              }));
+                            }}
+                            className="mr-2 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300 rounded"
+                          />
+                          <span className="text-sm capitalize text-gray-900">
+                            {category === 'behaviour' ? 'Behaviour & Home' :
+                              category === 'farm' ? 'Farm' :
+                                category === 'academy' ? 'Academy' : 'Service & Support'}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Service Types Filter */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Service Types</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['pet_care', 'dog_sitting', 'dog_training', 'private_training', 'consult'] as const).map(type => (
+                        <label key={type} className="flex items-center cursor-pointer p-2 bg-gray-50 rounded hover:bg-gray-100">
+                          <input
+                            type="checkbox"
+                            checked={announcementData.filters.service_types.includes(type)}
+                            onChange={(e) => {
+                              const newTypes = e.target.checked
+                                ? [...announcementData.filters.service_types, type]
+                                : announcementData.filters.service_types.filter(t => t !== type);
+                              setAnnouncementData(prev => ({
+                                ...prev,
+                                filters: { ...prev.filters, service_types: newTypes }
+                              }));
+                            }}
+                            className="mr-2 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300 rounded"
+                          />
+                          <span className="text-sm capitalize text-gray-900">
+                            {type.replace(/_/g, ' ')}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Trainer Filter */}
+                  {trainers.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Trainers/Handlers</label>
+                      <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-2 bg-gray-50">
+                        {trainers.map(trainer => (
+                          <label key={trainer.id} className="flex items-center cursor-pointer p-1 hover:bg-gray-100 rounded">
+                            <input
+                              type="checkbox"
+                              checked={announcementData.filters.trainer_ids.includes(trainer.id)}
+                              onChange={(e) => {
+                                const newTrainerIds = e.target.checked
+                                  ? [...announcementData.filters.trainer_ids, trainer.id]
+                                  : announcementData.filters.trainer_ids.filter(id => id !== trainer.id);
+                                setAnnouncementData(prev => ({
+                                  ...prev,
+                                  filters: { ...prev.filters, trainer_ids: newTrainerIds }
+                                }));
+                              }}
+                              className="mr-2 h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-900">{trainer.full_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Date Filters */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Next Service After</label>
+                      <Input
+                        type="date"
+                        value={announcementData.filters.next_service_after}
+                        onChange={(e) => setAnnouncementData(prev => ({
+                          ...prev,
+                          filters: { ...prev.filters, next_service_after: e.target.value }
+                        }))}
+                        className="border-gray-300 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)]"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Next Service Before</label>
+                      <Input
+                        type="date"
+                        value={announcementData.filters.next_service_before}
+                        onChange={(e) => setAnnouncementData(prev => ({
+                          ...prev,
+                          filters: { ...prev.filters, next_service_before: e.target.value }
+                        }))}
+                        className="border-gray-300 focus:border-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)]"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Filter by clients with upcoming services in the specified date range
+                  </p>
+                </div>
+              )}
 
               {/* Content */}
               <div className="space-y-2">

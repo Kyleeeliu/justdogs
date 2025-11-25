@@ -2,7 +2,7 @@
 
 import { supabase } from '../supabase/client';
 import { User, UserRole } from '@/types';
-import { getCurrentSupabaseUser } from '../supabase/users';
+import { getCurrentSupabaseUser, createUser } from '../supabase/users';
 
 // --- Functions that use the client-side global 'supabase' (OK) ---
 
@@ -62,7 +62,7 @@ export async function signIn(email: string, password: string) {
           stack: error.stack,
           name: error.name,
         });
-        throw error;
+      throw error;
       } else {
         // Handle non-Error objects
         const errorString = JSON.stringify(error, Object.getOwnPropertyNames(error));
@@ -105,7 +105,58 @@ export async function signUp(email: string, password: string, fullName: string, 
 
       console.log('Supabase signup successful:', data);
       
-      // ... (rest of the return logic remains the same)
+      // Create user profile in users table if user was created
+      if (data.user) {
+        try {
+          console.log('Creating user profile in users table:', {
+            id: data.user.id,
+            email: data.user.email,
+            fullName,
+            role
+          });
+
+          // Check if user profile already exists
+          const { data: existingUser, error: checkError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', data.user.id)
+            .maybeSingle(); // Use maybeSingle to avoid error when no rows found
+
+          if (checkError && checkError.code !== 'PGRST116') {
+            // PGRST116 is "no rows returned" which is fine
+            console.error('Error checking existing user:', checkError);
+            throw checkError;
+          }
+
+          if (!existingUser) {
+            // Create user profile with matching auth ID
+            await createUser(
+              {
+                email: data.user.email!,
+                full_name: fullName,
+                role: role,
+                phone: null,
+                avatar_url: null,
+                approval_status: role === 'trainer' ? 'pending' : 'approved',
+              },
+              data.user.id // Use the auth user ID
+            );
+            console.log('User profile created successfully');
+          } else {
+            console.log('User profile already exists');
+          }
+        } catch (profileError) {
+          console.error('Error creating user profile:', profileError);
+          // Don't throw here - auth user is created, profile can be created later
+          // But wrap the error to provide context
+          const errorMessage = profileError instanceof Error 
+            ? profileError.message 
+            : 'Database error saving new user';
+          throw new Error(errorMessage);
+        }
+      }
+      
+      // Handle different flows based on user role
       if (role === 'trainer') {
         console.log('Trainer registration - requires admin approval');
         return {

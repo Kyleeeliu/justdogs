@@ -43,7 +43,7 @@ export default function DashboardPage() {
             setAnnouncements([]);
           });
 
-        // Load dismissed announcements from localStorage
+          // Load dismissed announcements from localStorage
         try {
           const dismissed = localStorage.getItem(`dismissed_announcements_${user.id}`);
           if (dismissed) {

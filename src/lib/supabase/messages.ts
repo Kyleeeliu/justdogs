@@ -50,10 +50,47 @@ export const searchUsers = async (searchTerm: string): Promise<User[]> => {
 
 // Get or create a conversation between two users
 export const getOrCreateConversation = async (userId1: string, userId2: string): Promise<string> => {
-  console.log('--- DEBUG: getOrCreateConversation Called ---'); // New Line
-  console.log('User 1 (Sender?):', userId1);                      // New Line
-  console.log('User 2 (Recipient?):', userId2);                    // New Line
+  console.log('getOrCreateConversation called:', { userId1, userId2 });
+  
   try {
+    // Verify both users exist in the users table before proceeding
+    // This prevents foreign key constraint violations
+    const { data: user1, error: user1Error } = await supabase
+      .from('users')
+      .select('id, email, full_name')
+      .eq('id', userId1)
+      .single();
+
+    if (user1Error || !user1) {
+      const errorMsg = `User ${userId1} not found in users table. The user profile may not exist or the ID doesn't match Supabase Auth. Error: ${user1Error?.message || 'Unknown error'}`;
+      console.error('User 1 validation failed:', {
+        userId1,
+        error: user1Error,
+        message: errorMsg
+      });
+      throw new Error(errorMsg);
+    }
+
+    const { data: user2, error: user2Error } = await supabase
+      .from('users')
+      .select('id, email, full_name')
+      .eq('id', userId2)
+      .single();
+
+    if (user2Error || !user2) {
+      const errorMsg = `User ${userId2} not found in users table. The user profile may not exist or the ID doesn't match Supabase Auth. Error: ${user2Error?.message || 'Unknown error'}`;
+      console.error('User 2 validation failed:', {
+        userId2,
+        error: user2Error,
+        message: errorMsg
+      });
+      throw new Error(errorMsg);
+    }
+
+    console.log('Both users verified in database:', {
+      user1: { id: user1.id, email: user1.email, name: user1.full_name },
+      user2: { id: user2.id, email: user2.email, name: user2.full_name }
+    });
     // First, try to find existing conversation between these two users
     const { data: existingConversations, error: fetchError } = await supabase
       .from(PARTICIPANTS_TABLE)
@@ -608,24 +645,52 @@ export const getUnreadMessages = async (userId: string): Promise<Message[]> => {
   }
 };
 
-// Create announcement message
+// Create announcement message with advanced filters
 export const createAnnouncement = async (
   senderId: string,
   subject: string,
   content: string,
-  targetRoles?: string[]
+  targetRoles?: string[],
+  filters?: {
+    service_types?: string[];
+    service_categories?: string[];
+    trainer_ids?: string[];
+    next_service_before?: string; // ISO date string
+    next_service_after?: string; // ISO date string
+  }
 ): Promise<Message | null> => {
   try {
-    const { data, error } = await supabase
-      .from(MESSAGES_TABLE)
-      .insert({
+    const insertData: any = {
         sender_id: senderId,
         subject,
         content,
         is_announcement: true,
         target_roles: targetRoles || null,
         delivered_at: new Date().toISOString(),
-      } as any)
+    };
+
+    // Add filter fields if provided
+    if (filters) {
+      if (filters.service_types && filters.service_types.length > 0) {
+        insertData.filter_service_types = filters.service_types;
+      }
+      if (filters.service_categories && filters.service_categories.length > 0) {
+        insertData.filter_service_categories = filters.service_categories;
+      }
+      if (filters.trainer_ids && filters.trainer_ids.length > 0) {
+        insertData.filter_trainer_ids = filters.trainer_ids;
+      }
+      if (filters.next_service_before) {
+        insertData.filter_next_service_before = filters.next_service_before;
+      }
+      if (filters.next_service_after) {
+        insertData.filter_next_service_after = filters.next_service_after;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from(MESSAGES_TABLE)
+      .insert(insertData)
       .select(`
         *,
         sender:sender_id (
@@ -675,7 +740,8 @@ export const createMessage = async (
         messageData.sender_id,
         messageData.subject || 'Announcement',
         messageData.content,
-        messageData.target_roles
+        messageData.target_roles,
+        (messageData as any).filters // Pass filters if provided
       );
       if (!announcement) {
         throw new Error('Failed to create announcement');
@@ -739,21 +805,21 @@ export const subscribeToMessages = (
 
   const channel = supabase
     .channel(`user-messages-${userId}`) // Unique channel name
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
         table: 'messages',
         // We do NOT filter here. We let RLS handle security, 
         // and we filter logic client-side for speed.
-      },
-      async (payload) => {
+        },
+        async (payload) => {
         const newMessage = payload.new as any;
-
+          
         // 1. FAST CHECK: Is this relevant to me?
         // We check IDs directly. No DB query needed yet.
-        const isRelevant = 
+          const isRelevant = 
           newMessage.sender_id === userId || 
           newMessage.recipient_id === userId ||
           newMessage.is_announcement === true;
@@ -767,22 +833,22 @@ export const subscribeToMessages = (
         try {
           const { data, error } = await supabase
             .from('messages')
-            .select(`
-              *,
-              sender:sender_id (
-                id,
-                full_name,
-                email,
-                avatar_url
+              .select(`
+                *,
+                sender:sender_id (
+                  id,
+                  full_name,
+                  email,
+                  avatar_url
               ),
               attachments:message_attachments (*)
-            `)
+              `)
             .eq('id', newMessage.id)
-            .single();
+              .single();
 
           if (!error && data) {
-            callback(data as any);
-          }
+              callback(data as any);
+            }
         } catch (fetchError) {
           console.error('Error fetching details for new message:', fetchError);
           // Fallback: send the raw message so UI at least updates
@@ -794,11 +860,11 @@ export const subscribeToMessages = (
       console.log(`Subscription status for ${userId}:`, status);
     });
 
-  return {
+    return {
     unsubscribe: () => {
       supabase.removeChannel(channel);
     }
-  };
+    };
 };
 
 // Helper function to check if user is in a conversation

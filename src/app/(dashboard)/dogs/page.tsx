@@ -13,11 +13,12 @@ import {
   HeartIcon,
   XMarkIcon,
   ChatBubbleLeftRightIcon,
-  KeyIcon
+  KeyIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { getCurrentUser } from '@/lib/auth/auth';
 import { User, Dog } from '@/types';
-import { getAllDogs, getDogsByOwner, createDog, searchDogs } from '@/lib/database/dogs';
+import { getAllDogs, getDogsByOwner, createDog, searchDogs, getDogById, updateDog, deleteDog } from '@/lib/database/dogs';
 
 // Mock data for demonstration - starting with empty array
 const mockDogs: Dog[] = [];
@@ -31,6 +32,9 @@ export default function DogsPage() {
   const [showAssessmentBot, setShowAssessmentBot] = useState(false);
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [assessmentCode, setAssessmentCode] = useState('');
+  const [selectedDog, setSelectedDog] = useState<Dog | null>(null);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     breed: '',
@@ -182,6 +186,24 @@ export default function DogsPage() {
     setSubmitting(true);
 
     try {
+      if (selectedDog && showEditModal) {
+        // Update existing dog
+        updateDog(selectedDog.id, {
+          name: formData.name,
+          breed: formData.breed,
+          age: parseInt(formData.age) || 0,
+          weight: parseFloat(formData.weight) || 0,
+          medical_notes: formData.medical_notes || undefined,
+          behavioral_notes: formData.behavioral_notes || undefined,
+          vaccine_records: formData.vaccine_records || undefined,
+          preferences: formData.preferences || undefined,
+          emergency_contact: formData.emergency_contact_name ? {
+            name: formData.emergency_contact_name,
+            phone: formData.emergency_contact_phone,
+            relationship: formData.emergency_contact_relationship || 'Owner'
+          } : undefined,
+        });
+      } else {
       // Create new dog in database
       createDog({
         name: formData.name,
@@ -200,6 +222,7 @@ export default function DogsPage() {
         } : undefined,
         photo_url: '/api/placeholder/150/150',
       });
+      }
 
       // Reload dogs from database to get the updated list
       if (user?.role === 'parent') {
@@ -210,7 +233,7 @@ export default function DogsPage() {
         setDogs(allDogs);
       }
       
-      // Reset form and close modal
+      // Reset form and close modals
       setFormData({
         name: '',
         breed: '',
@@ -225,8 +248,10 @@ export default function DogsPage() {
         emergency_contact_relationship: ''
       });
       setShowAddModal(false);
+      setShowEditModal(false);
+      setSelectedDog(null);
     } catch (error) {
-      console.error('Error adding dog:', error);
+      console.error('Error saving dog:', error);
     } finally {
       setSubmitting(false);
     }
@@ -387,10 +412,41 @@ export default function DogsPage() {
               )}
 
               <div className="flex space-x-2 pt-2">
-                <Button size="sm" className="flex-1">
+                <Button 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => {
+                    setSelectedDog(dog);
+                    setShowViewModal(true);
+                  }}
+                >
                   View Profile
                 </Button>
-                <Button size="sm" variant="outline">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedDog(dog);
+                    // Load dog data into form
+                    const dogData = getDogById(dog.id);
+                    if (dogData) {
+                      setFormData({
+                        name: dogData.name,
+                        breed: dogData.breed,
+                        age: dogData.age.toString(),
+                        weight: dogData.weight?.toString() || '',
+                        medical_notes: dogData.medical_notes || '',
+                        behavioral_notes: dogData.behavioral_notes || '',
+                        vaccine_records: dogData.vaccine_records || '',
+                        preferences: dogData.preferences || '',
+                        emergency_contact_name: dogData.emergency_contact?.name || '',
+                        emergency_contact_phone: dogData.emergency_contact?.phone || '',
+                        emergency_contact_relationship: dogData.emergency_contact?.relationship || ''
+                      });
+                      setShowEditModal(true);
+                    }
+                  }}
+                >
                   Edit
                 </Button>
               </div>
@@ -411,23 +467,205 @@ export default function DogsPage() {
         </Card>
       )}
 
-      {/* Add Dog Modal */}
-      {showAddModal && (
+      {/* View Dog Profile Modal */}
+      {showViewModal && selectedDog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Add New Dog</CardTitle>
+                <CardTitle>{selectedDog.name}'s Profile</CardTitle>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setShowViewModal(false);
+                    setSelectedDog(null);
+                  }}
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Basic Information */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Name</p>
+                    <p className="font-medium">{selectedDog.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Breed</p>
+                    <p className="font-medium">{selectedDog.breed}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Age</p>
+                    <p className="font-medium">{selectedDog.age} years</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Weight</p>
+                    <p className="font-medium">{selectedDog.weight}kg</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Medical Information */}
+              {(selectedDog.medical_notes || selectedDog.vaccine_records) && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Medical Information</h3>
+                  {selectedDog.medical_notes && (
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-600 mb-1">Medical Notes</p>
+                      <p className="text-gray-900">{selectedDog.medical_notes}</p>
+                    </div>
+                  )}
+                  {selectedDog.vaccine_records && (
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Vaccine Records</p>
+                      <p className="text-gray-900">{selectedDog.vaccine_records}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Behavioral Information */}
+              {(selectedDog.behavioral_notes || selectedDog.preferences) && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Behavioral Information</h3>
+                  {selectedDog.behavioral_notes && (
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-600 mb-1">Behavioral Notes</p>
+                      <p className="text-gray-900">{selectedDog.behavioral_notes}</p>
+                    </div>
+                  )}
+                  {selectedDog.preferences && (
+                    <div>
+                      <p className="text-sm text-gray-600 mb-1">Preferences</p>
+                      <p className="text-gray-900">{selectedDog.preferences}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Emergency Contact */}
+              {selectedDog.emergency_contact && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Emergency Contact</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Name</p>
+                      <p className="font-medium">{selectedDog.emergency_contact.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Phone</p>
+                      <p className="font-medium">{selectedDog.emergency_contact.phone}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm text-gray-600">Relationship</p>
+                      <p className="font-medium">{selectedDog.emergency_contact.relationship}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-between pt-4">
+                {user?.role === 'admin' && (
+                  <Button
+                    variant="outline"
+                    className="text-red-600 border-red-600 hover:bg-red-50 hover:text-red-700"
+                    onClick={() => {
+                      if (confirm(`Are you sure you want to delete ${selectedDog.name}? This action cannot be undone.`)) {
+                        const success = deleteDog(selectedDog.id);
+                        if (success) {
+                          // Reload dogs from database
+                          if (user?.role === 'parent') {
+                            const userDogs = getDogsByOwner(user.id);
+                            setDogs(userDogs);
+                          } else {
+                            const allDogs = getAllDogs();
+                            setDogs(allDogs);
+                          }
+                          setShowViewModal(false);
+                          setSelectedDog(null);
+                          alert(`${selectedDog.name} has been deleted successfully.`);
+                        } else {
+                          alert('Failed to delete dog. Please try again.');
+                        }
+                      }
+                    }}
+                  >
+                    <TrashIcon className="h-4 w-4 mr-2" />
+                    Delete Dog
+                  </Button>
+                )}
+                <div className={user?.role === 'admin' ? 'flex gap-2' : 'flex justify-end'}>
+                  <Button
+                    onClick={() => {
+                      setShowViewModal(false);
+                      // Load dog data into form for editing
+                      const dogData = getDogById(selectedDog.id);
+                      if (dogData) {
+                        setFormData({
+                          name: dogData.name,
+                          breed: dogData.breed,
+                          age: dogData.age.toString(),
+                          weight: dogData.weight?.toString() || '',
+                          medical_notes: dogData.medical_notes || '',
+                          behavioral_notes: dogData.behavioral_notes || '',
+                          vaccine_records: dogData.vaccine_records || '',
+                          preferences: dogData.preferences || '',
+                          emergency_contact_name: dogData.emergency_contact?.name || '',
+                          emergency_contact_phone: dogData.emergency_contact?.phone || '',
+                          emergency_contact_relationship: dogData.emergency_contact?.relationship || ''
+                        });
+                        setShowEditModal(true);
+                      }
+                    }}
+                  >
+                    Edit Profile
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Add/Edit Dog Modal */}
+      {(showAddModal || showEditModal) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>{showEditModal ? 'Edit Dog' : 'Add New Dog'}</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setShowEditModal(false);
+                    setSelectedDog(null);
+                    setFormData({
+                      name: '',
+                      breed: '',
+                      age: '',
+                      weight: '',
+                      medical_notes: '',
+                      behavioral_notes: '',
+                      vaccine_records: '',
+                      preferences: '',
+                      emergency_contact_name: '',
+                      emergency_contact_phone: '',
+                      emergency_contact_relationship: ''
+                    });
+                  }}
                 >
                   <XMarkIcon className="h-4 w-4" />
                 </Button>
               </div>
               <CardDescription>
-                Fill in the details to add a new dog to your profile
+                {showEditModal ? 'Update the details for this dog' : 'Fill in the details to add a new dog to your profile'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -533,7 +771,7 @@ export default function DogsPage() {
                     disabled={submitting}
                     className="flex-1"
                   >
-                    {submitting ? 'Adding Dog...' : 'Add Dog'}
+                    {submitting ? (showEditModal ? 'Updating Dog...' : 'Adding Dog...') : (showEditModal ? 'Update Dog' : 'Add Dog')}
                   </Button>
                   <Button 
                     type="button" 

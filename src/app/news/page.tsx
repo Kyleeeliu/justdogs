@@ -11,9 +11,9 @@ export default function NewsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadNews = () => {
+    const loadNews = async () => {
       try {
-        const news = getNewsItems();
+        const news = await getNewsItems();
         setNewsItems(news);
       } catch (error) {
         console.error('Error loading news:', error);
@@ -24,8 +24,8 @@ export default function NewsPage() {
 
     loadNews();
     
-    // Refresh news every 5 seconds to catch updates from admin
-    const interval = setInterval(loadNews, 5000);
+    // Refresh news every 30 seconds to catch updates from admin
+    const interval = setInterval(loadNews, 30000);
     
     return () => clearInterval(interval);
   }, []);

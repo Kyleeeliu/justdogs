@@ -5,24 +5,53 @@ import * as localUsers from '../database/users';
 // Supabase table name for users
 const USERS_TABLE = 'users';
 
-export const createUser = async (userData: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> => {
+export const createUser = async (
+  userData: Omit<User, 'id' | 'created_at' | 'updated_at'>,
+  userId?: string // Optional: if provided, use this ID instead of generating a new one
+): Promise<User> => {
+  const insertData: any = {
+    email: userData.email,
+    full_name: userData.full_name,
+    role: userData.role,
+    phone: userData.phone || null,
+    avatar_url: userData.avatar_url || null,
+  };
+
+  // Include approval_status if provided (don't use conditional spread to allow explicit values)
+  if (userData.approval_status !== undefined) {
+    insertData.approval_status = userData.approval_status;
+  }
+
+  // If userId is provided, use it (for matching Supabase Auth user ID)
+  if (userId) {
+    insertData.id = userId;
+  }
+
+  console.log('createUser: Inserting user data:', {
+    id: insertData.id,
+    email: insertData.email,
+    role: insertData.role,
+    approval_status: insertData.approval_status,
+  });
+
   const { data, error } = await supabase
     .from(USERS_TABLE)
-    .insert([{
-      email: userData.email,
-      full_name: userData.full_name,
-      role: userData.role,
-      phone: userData.phone,
-      ...(userData.approval_status && { approval_status: userData.approval_status }),
-    }])
+    .insert([insertData])
     .select()
     .single();
 
   if (error) {
-    console.error('Error creating user:', error);
+    console.error('Error creating user:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+    });
     throw error;
   }
 
+  console.log('createUser: User created successfully:', data?.id);
   return data as User;
 };
 
@@ -227,9 +256,14 @@ export const getCurrentSupabaseUser = async (): Promise<User | null> => {
           avatar_url: userMetadata.avatar_url || null,
         };
 
-        console.log('Creating user profile:', { email: newUserData.email, role: newUserData.role });
-        user = await createUser(newUserData);
-        console.log('User profile created successfully:', user.email);
+        console.log('Creating user profile:', { 
+          email: newUserData.email, 
+          role: newUserData.role,
+          authUserId: authUser.id 
+        });
+        // Use the auth user's ID to ensure it matches Supabase Auth
+        user = await createUser(newUserData, authUser.id);
+        console.log('User profile created successfully:', user.email, 'with ID:', user.id);
       } catch (createError) {
         console.error('Error creating user profile:', createError);
         // If creation fails, still try to return a basic user object from auth
@@ -246,7 +280,7 @@ export const getCurrentSupabaseUser = async (): Promise<User | null> => {
         } as User;
       }
     }
-
+    
     if (!user) {
       console.warn('getCurrentSupabaseUser: Could not get or create user profile');
       return null;

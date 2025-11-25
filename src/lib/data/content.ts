@@ -167,40 +167,54 @@ let newsItems = [...defaultNewsItems];
 let services = [...defaultServices];
 let teamMembers = [...defaultTeamMembers];
 
-// News functions
-export const getNewsItems = (): NewsItem[] => {
-  return newsItems.filter(item => item.published);
-};
+// News functions - Now using Supabase
+import * as supabaseNews from '../supabase/news';
 
-export const getAllNewsItems = (): NewsItem[] => {
-  return newsItems;
-};
-
-export const updateNewsItem = (id: string, updates: Partial<NewsItem>): NewsItem | null => {
-  const index = newsItems.findIndex(item => item.id === id);
-  if (index !== -1) {
-    newsItems[index] = { ...newsItems[index], ...updates };
-    return newsItems[index];
+export const getNewsItems = async (): Promise<NewsItem[]> => {
+  try {
+    return await supabaseNews.getNewsItems();
+  } catch (error) {
+    console.error('Error fetching news items, falling back to defaults:', error);
+    // Fallback to defaults if Supabase fails
+    return defaultNewsItems.filter(item => item.published);
   }
-  return null;
 };
 
-export const addNewsItem = (item: Omit<NewsItem, 'id'>): NewsItem => {
-  const newItem: NewsItem = {
-    ...item,
-    id: Date.now().toString()
-  };
-  newsItems.push(newItem);
-  return newItem;
-};
-
-export const deleteNewsItem = (id: string): boolean => {
-  const index = newsItems.findIndex(item => item.id === id);
-  if (index !== -1) {
-    newsItems.splice(index, 1);
-    return true;
+export const getAllNewsItems = async (): Promise<NewsItem[]> => {
+  try {
+    return await supabaseNews.getAllNewsItems();
+  } catch (error) {
+    console.error('Error fetching all news items, falling back to defaults:', error);
+    // Fallback to defaults if Supabase fails
+    return defaultNewsItems;
   }
-  return false;
+};
+
+export const updateNewsItem = async (id: string, updates: Partial<NewsItem>): Promise<NewsItem | null> => {
+  try {
+    return await supabaseNews.updateNewsItem(id, updates);
+  } catch (error) {
+    console.error('Error updating news item:', error);
+    throw error;
+  }
+};
+
+export const addNewsItem = async (item: Omit<NewsItem, 'id'>): Promise<NewsItem> => {
+  try {
+    return await supabaseNews.addNewsItem(item);
+  } catch (error) {
+    console.error('Error adding news item:', error);
+    throw error;
+  }
+};
+
+export const deleteNewsItem = async (id: string): Promise<boolean> => {
+  try {
+    return await supabaseNews.deleteNewsItem(id);
+  } catch (error) {
+    console.error('Error deleting news item:', error);
+    throw error;
+  }
 };
 
 // Services functions
