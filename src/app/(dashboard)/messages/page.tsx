@@ -359,157 +359,133 @@ export default function MessagesPage() {
       ));
     }, 500);
   };
+const handleSendMessage = async () => {
+  if (!messageInput.trim() && attachments.length === 0) return;
+  if (!currentUser || !selectedConversation) return;
 
-  const handleSendMessage = async () => {
-    if (!messageInput.trim() && attachments.length === 0) return;
-    if (!currentUser || !selectedConversation) return;
+  if (selectedConversation.id === 'announcements') {
+    alert('Cannot send messages to announcements. Use the Announcement button to create announcements.');
+    return;
+  }
 
-    if (selectedConversation.id === 'announcements') {
-      alert('Cannot send messages to announcements. Use the Announcement button to create announcements.');
+  const messageContent = messageInput.trim();
+  const messageAttachments = [...attachments]; // Store attachments
+  setMessageInput(''); // Clear input immediately for better UX
+  setAttachments([]); // Clear attachments immediately
+
+  try {
+    // Get the recipient user ID
+    const recipientId = selectedConversation.otherUserId || selectedConversation.id;
+    
+    if (selectedConversation.conversationId && !selectedConversation.otherUserId) {
+      console.error('Cannot send message: conversation has no otherUserId');
+      alert('Error: Cannot determine recipient. Please select a conversation.');
       return;
     }
 
-    const messageContent = messageInput.trim();
-    setMessageInput(''); // Clear input immediately for better UX
+    console.log('Sending message with attachments:', {
+      sender_id: currentUser.id,
+      recipient_id: recipientId,
+      content_length: messageContent.length,
+      attachments_count: messageAttachments.length
+    });
 
-    try {
-      // Get the recipient user ID - use otherUserId if available, otherwise fall back to id
-      // otherUserId is the actual user ID, while id might be a conversation UUID
-      const recipientId = selectedConversation.otherUserId || selectedConversation.id;
-      
-      // Don't use conversation UUID as recipient_id - it should be a user ID
-      if (selectedConversation.conversationId && !selectedConversation.otherUserId) {
-        console.error('Cannot send message: conversation has no otherUserId');
-        alert('Error: Cannot determine recipient. Please select a conversation.');
-        return;
-      }
+    // Use sendMessage function to handle attachments
+    const { getOrCreateConversation, sendMessage } = await import('@/lib/supabase/messages');
+    
+    // Get or create conversation
+    const conversationId = await getOrCreateConversation(currentUser.id, recipientId);
+    console.log('Using conversation:', conversationId);
+    
+    // Send message with attachments
+    const newMessage = await sendMessage(
+      conversationId,
+      currentUser.id,
+      messageContent,
+      messageAttachments.length > 0 ? messageAttachments : undefined
+    );
 
-      console.log('Sending message:', {
-        sender_id: currentUser.id,
-        recipient_id: recipientId,
-        conversation_id: selectedConversation.conversationId,
-        content_length: messageContent.length,
-      });
+    if (newMessage) {
+      console.log('Message sent successfully with', newMessage.attachments?.length || 0, 'attachments');
 
-      const messageData = {
-        sender_id: currentUser.id,
-        recipient_id: recipientId,
-        subject: '', // Chat messages don't need subjects
-        content: messageContent,
-        is_announcement: false,
-        message_type: (attachments.length > 0 ? 'image' : 'text') as 'text' | 'image' | 'file'
-      };
+      // Reload messages to get the latest
+      const updatedMessages = await getMessagesByUser(currentUser.id);
+      setMessages(updatedMessages);
 
-      const newMessage = await createMessage(messageData);
+      // Update conversations
+      const updatedConversationMap = new Map<string, MockConversation>();
+      updatedMessages.forEach(msg => {
+        let convId: string;
+        let otherParticipant: string;
 
-      if (newMessage) {
-        console.log('Message sent successfully:', newMessage.id);
-
-        // Reload messages to ensure we have the latest from database
-        if (currentUser) {
-          try {
-            const updatedMessages = await getMessagesByUser(currentUser.id);
-            setMessages(updatedMessages);
-
-            // Update conversations list with latest messages
-            const updatedConversationMap = new Map<string, MockConversation>();
-            updatedMessages.forEach(msg => {
-              let convId: string;
-              let otherParticipant: string;
-
-              if (msg.is_announcement) {
-                convId = 'announcements';
-                otherParticipant = 'System';
-              } else if (msg.conversation_id) {
-                convId = msg.conversation_id;
-                otherParticipant = msg.sender_id === currentUser.id
-                  ? (msg.recipient_id || 'unknown')
-                  : msg.sender_id;
-              } else if (msg.sender_id === currentUser.id) {
-                convId = msg.recipient_id || 'unknown';
-                otherParticipant = msg.recipient_id || 'unknown';
-              } else {
-                convId = msg.sender_id;
-                otherParticipant = msg.sender_id;
-              }
-
-              if (!updatedConversationMap.has(convId)) {
-                const otherUser = availableUsers.find(u => u.id === otherParticipant);
-                updatedConversationMap.set(convId, {
-                  id: convId,
-                  conversationId: msg.conversation_id || undefined,
-                  otherUserId: convId === 'announcements' ? undefined : otherParticipant,
-                  participants: convId === 'announcements' ? ['system'] : [currentUser.id, otherParticipant],
-                  participantNames: convId === 'announcements' ? ['Announcements'] : [otherUser?.full_name || 'Unknown User'],
-                  lastMessage: msg.content,
-                  lastMessageTime: msg.created_at,
-                  unreadCount: 0
-                });
-              }
-
-              const conv = updatedConversationMap.get(convId)!;
-              if (new Date(msg.created_at) > new Date(conv.lastMessageTime || '')) {
-                conv.lastMessage = msg.content;
-                conv.lastMessageTime = msg.created_at;
-              }
-
-              if (!msg.read_at && msg.sender_id !== currentUser.id) {
-                conv.unreadCount++;
-              }
-            });
-
-            setConversations(Array.from(updatedConversationMap.values()).sort((a, b) =>
-              new Date(b.lastMessageTime || '').getTime() - new Date(a.lastMessageTime || '').getTime()
-            ));
-
-            // Ensure the selected conversation is still selected (in case ID changed)
-            // Try to find by conversation_id UUID first, then by other user ID
-            let updatedConv = newMessage.conversation_id
-              ? Array.from(updatedConversationMap.values()).find(c => c.conversationId === newMessage.conversation_id)
-              : null;
-
-            if (!updatedConv) {
-              // Fallback: find by other user ID
-              updatedConv = Array.from(updatedConversationMap.values()).find(c =>
-                c.otherUserId === selectedConversation.otherUserId ||
-                c.id === selectedConversation.id
-              );
-            }
-
-            if (updatedConv) {
-              console.log('Updated selected conversation:', updatedConv);
-              setSelectedConversation(updatedConv);
-            } else {
-              console.warn('Could not find updated conversation for:', {
-                conversation_id: newMessage.conversation_id,
-                selectedConversationId: selectedConversation.id
-              });
-            }
-          } catch (reloadError) {
-            console.error('Error reloading messages:', reloadError);
-            // Fallback: just add the message locally
-            setMessages(prev => {
-              const exists = prev.some(m => m.id === newMessage.id);
-              if (exists) return prev;
-              return [...prev, newMessage];
-            });
-          }
+        if (msg.is_announcement) {
+          convId = 'announcements';
+          otherParticipant = 'System';
+        } else if (msg.conversation_id) {
+          convId = msg.conversation_id;
+          otherParticipant = msg.sender_id === currentUser.id
+            ? (msg.recipient_id || 'unknown')
+            : msg.sender_id;
+        } else if (msg.sender_id === currentUser.id) {
+          convId = msg.recipient_id || 'unknown';
+          otherParticipant = msg.recipient_id || 'unknown';
+        } else {
+          convId = msg.sender_id;
+          otherParticipant = msg.sender_id;
         }
 
-        // Scroll to bottom to show new message
-        setTimeout(() => scrollToBottom(), 200);
-      } else {
-        throw new Error('Message was not created');
+        if (!updatedConversationMap.has(convId)) {
+          const otherUser = availableUsers.find(u => u.id === otherParticipant);
+          updatedConversationMap.set(convId, {
+            id: convId,
+            conversationId: msg.conversation_id || undefined,
+            otherUserId: convId === 'announcements' ? undefined : otherParticipant,
+            participants: convId === 'announcements' ? ['system'] : [currentUser.id, otherParticipant],
+            participantNames: convId === 'announcements' ? ['Announcements'] : [otherUser?.full_name || 'Unknown User'],
+            lastMessage: msg.content || (msg.attachments && msg.attachments.length > 0 ? '📎 Attachment' : ''),
+            lastMessageTime: msg.created_at,
+            unreadCount: 0
+          });
+        }
+
+        const conv = updatedConversationMap.get(convId)!;
+        if (new Date(msg.created_at) > new Date(conv.lastMessageTime || '')) {
+          conv.lastMessage = msg.content || (msg.attachments && msg.attachments.length > 0 ? '📎 Attachment' : '');
+          conv.lastMessageTime = msg.created_at;
+        }
+
+        if (!msg.read_at && msg.sender_id !== currentUser.id) {
+          conv.unreadCount++;
+        }
+      });
+
+      setConversations(Array.from(updatedConversationMap.values()).sort((a, b) =>
+        new Date(b.lastMessageTime || '').getTime() - new Date(a.lastMessageTime || '').getTime()
+      ));
+
+      // Update selected conversation
+      const updatedConv = newMessage.conversation_id
+        ? Array.from(updatedConversationMap.values()).find(c => c.conversationId === newMessage.conversation_id)
+        : null;
+
+      if (updatedConv) {
+        setSelectedConversation(updatedConv);
       }
 
-      setAttachments([]);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      // Restore message input on error
-      setMessageInput(messageContent);
-      alert(error instanceof Error ? error.message : 'Failed to send message. Please try again.');
+      // Scroll to bottom
+      setTimeout(() => scrollToBottom(), 200);
+    } else {
+      throw new Error('Message was not created');
     }
-  };
+
+  } catch (error) {
+    console.error('Error sending message:', error);
+    // Restore on error
+    setMessageInput(messageContent);
+    setAttachments(messageAttachments);
+    alert(error instanceof Error ? error.message : 'Failed to send message. Please try again.');
+  }
+};
 
   const handleCreateNewChat = async () => {
     if (selectedUsers.length === 0 || !currentUser) return;

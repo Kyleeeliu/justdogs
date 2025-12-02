@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User } from '@/types';
-import { getCurrentUser, signOut } from '@/lib/auth/auth';
+import { getCurrentUser, signOut, clearAuthState, isRefreshTokenError } from '@/lib/auth/auth';
 import { supabase } from '@/lib/supabase/client';
 import { sessionManager } from '@/lib/auth/sessionManager';
 
@@ -19,7 +19,24 @@ export function useAuth() {
     const initializeAuth = async () => {
       try {
         // Quick session check first
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('useAuth: Error getting session during init:', sessionError);
+          
+          // Handle refresh token errors by clearing state
+          if (isRefreshTokenError(sessionError)) {
+            console.log('useAuth: Invalid refresh token detected during init, clearing auth state');
+            await clearAuthState();
+          }
+          
+          if (mounted) {
+            setUser(null);
+            setInitialized(true);
+            setLoading(false);
+          }
+          return;
+        }
         
         if (!session) {
           // No session, skip user lookup
@@ -47,6 +64,13 @@ export function useAuth() {
         }
       } catch (error) {
         console.error('useAuth: Error initializing auth:', error);
+        
+        // Handle refresh token errors by clearing state
+        if (isRefreshTokenError(error)) {
+          console.log('useAuth: Invalid refresh token detected during init exception, clearing auth state');
+          await clearAuthState();
+        }
+        
         if (mounted) {
           setUser(null);
           setInitialized(true);
@@ -70,20 +94,20 @@ export function useAuth() {
           getCurrentUser()
             .then(currentUser => {
               if (mounted) {
-            setUser(currentUser);
+                setUser(currentUser);
                 setLoading(false);
-            // Start session monitoring after successful login
+                // Start session monitoring after successful login
                 if (currentUser) {
-            sessionManager.startMonitoring();
+                  sessionManager.startMonitoring();
                 }
               }
             })
             .catch(error => {
-            console.error('useAuth: Error getting user after sign in:', error);
+              console.error('useAuth: Error getting user after sign in:', error);
               if (mounted) {
-            setUser(null);
+                setUser(null);
                 setLoading(false);
-          }
+              }
             });
         } else if (event === 'SIGNED_OUT') {
           // User signed out

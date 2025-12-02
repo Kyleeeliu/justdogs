@@ -31,12 +31,12 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     flowType: 'pkce',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    storageKey: 'supabase.auth.token',
+    storageKey: 'sb-pajtampwqutuuidklxbv-auth-token', // Use consistent storage key with project ref
     debug: process.env.NODE_ENV === 'development',
   },
   global: {
     headers: {
-      'X-Client-Info': 'justdogs-app@1.0.0',
+      'X-Client-Info': 'jsdog-app@1.0.0',
     },
   },
 });

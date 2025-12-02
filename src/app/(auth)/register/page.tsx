@@ -79,7 +79,28 @@ export default function RegisterPage() {
       }
       
     } catch (err) {
-      console.error('Register page: Sign up error:', err);
+      // Log the error in multiple ways to ensure we capture all information
+      console.error('Register page: Sign up error - Raw error:', err);
+      console.error('Register page: Sign up error - Stringified:', JSON.stringify(err, null, 2));
+      console.error('Register page: Sign up error - Details:', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        name: err instanceof Error ? err.name : 'Unknown',
+        formData: {
+          email: formData.email,
+          role: formData.role,
+          fullName: formData.fullName
+        }
+      });
+      
+      // Also log all enumerable properties if it's an object
+      if (typeof err === 'object' && err !== null) {
+        console.error('Register page: Sign up error - All properties:', Object.getOwnPropertyNames(err).reduce((acc, key) => {
+          acc[key] = (err as any)[key];
+          return acc;
+        }, {} as any));
+      }
+      
       setError(err instanceof Error ? err.message : 'An error occurred during registration');
     } finally {
       setLoading(false);

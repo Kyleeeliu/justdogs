@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client-browser';
+import { clearAuthState, isRefreshTokenError } from '@/lib/auth/auth';
 
 class SessionManager {
   private refreshInterval: NodeJS.Timeout | null = null;
@@ -68,6 +69,11 @@ class SessionManager {
       
       if (error) {
         console.error('Error getting session:', error);
+        // If we get an auth error, the session might be invalid
+        if (isRefreshTokenError(error)) {
+          console.log('Invalid refresh token detected, clearing auth state');
+          await clearAuthState();
+        }
         return;
       }
 
@@ -91,22 +97,27 @@ class SessionManager {
       if (timeUntilExpiry < this.TOKEN_REFRESH_THRESHOLD) {
         console.log('Refreshing session token...');
         
-        // Check if refreshSession method exists (real Supabase client)
-        const authClient = supabase.auth as any;
-        if (typeof authClient.refreshSession === 'function') {
-          try {
-            const { data, error: refreshError } = await authClient.refreshSession();
-            
-            if (refreshError) {
-              console.error('Error refreshing session:', refreshError);
-            } else {
-              console.log('Session refreshed successfully');
+        try {
+          // Use the proper Supabase refresh method
+          const { data, error: refreshError } = await supabase.auth.refreshSession();
+          
+          if (refreshError) {
+            console.error('Error refreshing session:', refreshError);
+            // If refresh fails with token not found, clear auth state
+            if (isRefreshTokenError(refreshError)) {
+              console.log('Refresh token invalid, clearing auth state');
+              await clearAuthState();
             }
-          } catch (error) {
-            console.error('Exception during session refresh:', error);
+          } else {
+            console.log('Session refreshed successfully');
           }
-        } else {
-          console.log('refreshSession method not available (mock mode)');
+        } catch (error) {
+          console.error('Exception during session refresh:', error);
+          // On any refresh error, consider clearing auth state to prevent stuck states
+          if (isRefreshTokenError(error)) {
+            console.log('Refresh token error, clearing auth state');
+            await clearAuthState();
+          }
         }
       }
     } catch (error) {
@@ -135,29 +146,27 @@ class SessionManager {
     try {
       console.log('Force refreshing session...');
       
-      // Check if refreshSession method exists (real Supabase client)
-      const authClient = supabase.auth as any;
-      if (typeof authClient.refreshSession === 'function') {
-        try {
-          const { data, error } = await authClient.refreshSession();
-          
-          if (error) {
-            console.error('Error force refreshing session:', error);
-            return false;
-          }
-          
-          console.log('Session force refreshed successfully');
-          return true;
-        } catch (refreshError) {
-          console.error('Exception during force refresh:', refreshError);
-          return false;
+      const { data, error } = await supabase.auth.refreshSession();
+      
+      if (error) {
+        console.error('Error force refreshing session:', error);
+        // If refresh fails with token not found, clear auth state
+        if (isRefreshTokenError(error)) {
+          console.log('Force refresh failed with invalid token, clearing auth state');
+          await clearAuthState();
         }
-      } else {
-        console.log('refreshSession method not available (mock mode)');
         return false;
       }
+      
+      console.log('Session force refreshed successfully');
+      return true;
     } catch (error) {
       console.error('Error in force refresh:', error);
+      // On any refresh error, consider clearing auth state to prevent stuck states
+      if (isRefreshTokenError(error)) {
+        console.log('Force refresh exception with invalid token, clearing auth state');
+        await clearAuthState();
+      }
       return false;
     }
   }

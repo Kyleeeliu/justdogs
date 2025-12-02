@@ -41,13 +41,24 @@ export const createUser = async (
     .single();
 
   if (error) {
-    console.error('Error creating user:', {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+    // Log the error in multiple ways to ensure we capture all information
+    console.error('Error creating user - Raw error:', error);
+    console.error('Error creating user - Stringified:', JSON.stringify(error, null, 2));
+    console.error('Error creating user - Properties:', {
+      message: error?.message || 'No message',
+      code: error?.code || 'No code',
+      details: error?.details || 'No details',
+      hint: error?.hint || 'No hint',
+      statusCode: (error as any)?.statusCode || 'No status code',
+      name: error?.name || 'No name',
     });
+    
+    // Also log all enumerable properties
+    console.error('Error creating user - All properties:', Object.getOwnPropertyNames(error).reduce((acc, key) => {
+      acc[key] = (error as any)[key];
+      return acc;
+    }, {} as any));
+    
     throw error;
   }
 
@@ -273,8 +284,8 @@ export const getCurrentSupabaseUser = async (): Promise<User | null> => {
           email: session.user.email!,
           full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
           role: (session.user.user_metadata?.role as any) || 'parent',
-          phone: null,
-          avatar_url: null,
+          phone: undefined,
+          avatar_url: undefined,
           created_at: session.user.created_at,
           updated_at: session.user.updated_at || session.user.created_at,
         } as User;
