@@ -11,12 +11,16 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   SpeakerWaveIcon,
-  XMarkIcon
+  XMarkIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
-import { User, DashboardStats, TrainerStats, ParentStats, Message } from '@/types';
+import { User, DashboardStats, TrainerStats, ParentStats, Message, Booking, BookingType, Dog } from '@/types';
 import { useRouter } from 'next/navigation';
 import { getMessagesByUser } from '@/lib/supabase/messages';
 import { useAuth } from '@/hooks/useAuth';
+import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
+import { getDogsByOwner, getAllDogs } from '@/lib/database/dogs';
+import { getUsersByRole } from '@/lib/supabase/users';
 
 export default function DashboardPage() {
   const { user } = useAuth(); // Use user from useAuth hook instead of fetching again
@@ -24,6 +28,10 @@ export default function DashboardPage() {
   const [announcements, setAnnouncements] = useState<Message[]>([]);
   const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>([]);
   const [loading, setLoading] = useState(false); // Start as false since user comes from useAuth
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [dogs, setDogs] = useState<Array<{ id: string; name: string }>>([]);
+  const [trainers, setTrainers] = useState<Array<{ id: string; name: string; full_name: string }>>([]);
+  const [loadingDogs, setLoadingDogs] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -109,6 +117,86 @@ export default function DashboardPage() {
   const visibleAnnouncements = announcements.filter(
     announcement => !dismissedAnnouncements.includes(announcement.id)
   );
+
+  // Load dogs and trainers when modal opens
+  useEffect(() => {
+    const loadBookingData = async () => {
+      if (!showCreateModal || !user) return;
+
+      setLoadingDogs(true);
+      try {
+        // Load dogs
+        let userDogs: Dog[] = [];
+        if (user.role === 'parent') {
+          userDogs = getDogsByOwner(user.id);
+        } else {
+          userDogs = getAllDogs();
+        }
+        setDogs(userDogs.map(dog => ({ id: dog.id, name: dog.name })));
+
+        // Load trainers
+        const trainersList = await getUsersByRole('trainer');
+        setTrainers(trainersList.map(trainer => ({ 
+          id: trainer.id, 
+          name: trainer.full_name,
+          full_name: trainer.full_name 
+        })));
+      } catch (error) {
+        console.error('Error loading booking data:', error);
+      } finally {
+        setLoadingDogs(false);
+      }
+    };
+
+    loadBookingData();
+  }, [showCreateModal, user]);
+
+  const handleCreateBooking = async (bookingData: BookingFormData) => {
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Get the dog's owner ID
+    let parentId: string;
+    if (user.role === 'parent') {
+      parentId = user.id;
+    } else {
+      // For admins, get the dog's owner
+      const dogDetails = getAllDogs().find(d => d.id === bookingData.dog_id);
+      if (!dogDetails) {
+        throw new Error('Dog details not found');
+      }
+      parentId = dogDetails.owner_id;
+    }
+
+    // Create booking via API
+    const response = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...bookingData,
+        parent_id: parentId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || 'Failed to create booking');
+    }
+
+    const result = await response.json();
+    
+    // Handle recurring bookings (returns array) or single booking
+    if (result.bookings && Array.isArray(result.bookings)) {
+      alert(`Successfully created ${result.bookings.length} recurring booking(s)!`);
+      router.push('/bookings'); // Redirect to bookings page to see the new bookings
+    } else if (result.booking) {
+      alert('Booking created successfully!');
+      router.push('/bookings'); // Redirect to bookings page to see the new booking
+    }
+  };
 
 
   if (loading) {
@@ -414,11 +502,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600">
-          Welcome back! Here&apos;s what&apos;s happening with your {user.role} account.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">
+            Welcome back! Here&apos;s what&apos;s happening with your {user.role} account.
+          </p>
+        </div>
+        {(user?.role === 'admin' || user?.role === 'parent') && (
+          <Button 
+            className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white flex-shrink-0 min-w-[140px] shadow-md"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            New Booking
+          </Button>
+        )}
       </div>
 
       {/* Announcements Section */}
@@ -465,6 +564,28 @@ export default function DashboardPage() {
       {user.role === 'admin' && renderAdminDashboard()}
       {user.role === 'trainer' && renderTrainerDashboard()}
       {user.role === 'parent' && renderParentDashboard()}
+
+      {/* Floating Action Button for Mobile - Always Visible */}
+      {(user?.role === 'admin' || user?.role === 'parent') && (
+        <Button
+          className="fixed bottom-20 right-4 lg:hidden bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white rounded-full h-14 w-14 shadow-lg z-50 flex items-center justify-center"
+          onClick={() => setShowCreateModal(true)}
+          aria-label="New Booking"
+        >
+          <PlusIcon className="h-6 w-6" />
+        </Button>
+      )}
+
+      {/* Create Booking Modal */}
+      {user && (
+        <CreateBookingModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleCreateBooking}
+          dogs={dogs}
+          trainers={trainers}
+        />
+      )}
     </div>
   );
 }

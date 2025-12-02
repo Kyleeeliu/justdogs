@@ -10,9 +10,12 @@ import {
   ClockIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  XCircleIcon
+  XCircleIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline';
 import { getCurrentUser } from '@/lib/auth/auth';
+import { useAuth } from '@/hooks/useAuth';
 import { User, Booking, BookingStatus, BookingType, Dog } from '@/types';
 import { formatDateTime, formatTime, getStatusColor } from '@/lib/utils';
 import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
@@ -98,10 +101,10 @@ const getBookingTypeColor = (type: BookingType) => {
 };
 
 export default function BookingsPage() {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading: authLoading } = useAuth(); // Use useAuth hook for consistent user state
   const [bookings, setBookings] = useState<Booking[]>(mockBookings);
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start as false since user comes from useAuth
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [dogs, setDogs] = useState<Array<{ id: string; name: string }>>([]);
   const [trainers, setTrainers] = useState<Array<{ id: string; name: string; full_name: string }>>([]);
@@ -112,32 +115,20 @@ export default function BookingsPage() {
   const [typeFilter, setTypeFilter] = useState<BookingType | 'all'>('all');
 
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const currentUser = await getCurrentUser();
-        console.log('Bookings page - Current user:', currentUser);
-        setUser(currentUser);
-        
-        // Filter bookings based on user role
-        if (currentUser?.role === 'parent') {
-          // Parents only see their own bookings
-          setBookings(mockBookings.filter(booking => booking.parent_id === currentUser.id));
-        } else if (currentUser?.role === 'trainer') {
-          // Trainers see their assigned bookings
-          setBookings(mockBookings.filter(booking => booking.trainer_id === currentUser.id));
-        } else {
-          // Admins see all bookings
-          setBookings(mockBookings);
-        }
-      } catch (error) {
-        console.error('Error loading user:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadUser();
-  }, []);
+    if (!user) return; // Wait for user from useAuth
+    
+    // Filter bookings based on user role
+    if (user.role === 'parent') {
+      // Parents only see their own bookings
+      setBookings(mockBookings.filter(booking => booking.parent_id === user.id));
+    } else if (user.role === 'trainer') {
+      // Trainers see their assigned bookings
+      setBookings(mockBookings.filter(booking => booking.trainer_id === user.id));
+    } else {
+      // Admins see all bookings
+      setBookings(mockBookings);
+    }
+  }, [user]);
 
   // Load dogs and trainers when modal opens
   useEffect(() => {
@@ -254,7 +245,7 @@ export default function BookingsPage() {
     return bookingDate.toDateString() === today.toDateString();
   });
 
-  if (loading) {
+  if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(0_32_96)]"></div>
@@ -264,16 +255,16 @@ export default function BookingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div className="flex-1">
           <h1 className="text-3xl font-bold text-gray-900">Bookings</h1>
           <p className="text-gray-600">
             Manage training sessions and appointments
           </p>
         </div>
-        {!loading && user && (user.role === 'admin' || user.role === 'parent') && (
+        {user && (user.role === 'admin' || user.role === 'parent') && (
           <Button 
-            className="mt-4 sm:mt-0 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+            className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white flex-shrink-0 min-w-[140px] shadow-md"
             onClick={() => setShowCreateModal(true)}
           >
             <PlusIcon className="h-4 w-4 mr-2" />
@@ -531,9 +522,9 @@ export default function BookingsPage() {
             <p className="text-gray-600">
               {filter === 'all' ? 'Get started by creating your first booking.' : `No ${filter} bookings found.`}
             </p>
-            {(user?.role === 'admin' || user?.role === 'parent') && filter === 'all' && (
+            {user && (user.role === 'admin' || user.role === 'parent') && filter === 'all' && (
               <Button 
-                className="mt-4"
+                className="mt-4 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
                 onClick={() => setShowCreateModal(true)}
               >
                 <PlusIcon className="h-4 w-4 mr-2" />
@@ -542,6 +533,17 @@ export default function BookingsPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Floating Action Button for Mobile - Always Visible */}
+      {user && (user.role === 'admin' || user.role === 'parent') && (
+        <Button
+          className="fixed bottom-20 right-4 lg:hidden bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white rounded-full h-14 w-14 shadow-lg z-50 flex items-center justify-center"
+          onClick={() => setShowCreateModal(true)}
+          aria-label="New Booking"
+        >
+          <PlusIcon className="h-6 w-6" />
+        </Button>
       )}
 
       {/* Create Booking Modal */}
