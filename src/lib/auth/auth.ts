@@ -7,45 +7,89 @@ import { getCurrentSupabaseUser, createUser } from '../supabase/users';
 // --- Functions that use the client-side global 'supabase' (OK) ---
 
 export async function signIn(email: string, password: string) {
-    console.log('SignIn attempt:', { email });
-    
-    try {
-        if (!supabase) {
-            throw new Error('Supabase client is not initialized. Please check your environment variables.');
-        }
+    console.log('SignIn attempt:', { email });
+    
+    try {
+        if (!supabase) {
+            throw new Error('Supabase client is not initialized. Please check your environment variables.');
+        }
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        // Check if Supabase URL and key are configured
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        
+        if (!supabaseUrl || !supabaseKey) {
+            console.error('Missing Supabase environment variables:', {
+                hasUrl: !!supabaseUrl,
+                hasKey: !!supabaseKey,
+            });
+            throw new Error('Supabase is not configured. Please check your environment variables.');
+        }
 
-        if (error) {
-            console.error('Supabase signin error:', error);
-            
-            let userMessage = error.message || 'An error occurred during sign in';
-            
-            if (error.message?.includes('Invalid login credentials')) {
-                userMessage = 'Invalid email or password. Please try again.';
-            } else if (error.message?.includes('Email not confirmed')) {
-                userMessage = 'Please confirm your email address before signing in.';
-            } else if (error.message?.includes('Too many requests')) {
-                userMessage = 'Too many sign-in attempts. Please try again later.';
-            }
-            
-            throw new Error(userMessage);
-        }
+        // Validate email format
+        if (!email || !email.includes('@')) {
+            throw new Error('Please enter a valid email address.');
+        }
 
-        if (!data || !data.user) {
-            console.error('Sign in returned no user data:', { data });
-            throw new Error('Sign in succeeded but no user data was returned.');
-        }
+        // Validate password
+        if (!password || password.length < 1) {
+            throw new Error('Please enter your password.');
+        }
 
-        console.log('Sign in successful:', data.user.email);
-        return data;
-    } catch (error) {
-        console.error('Sign in error:', error);
-        throw error;
-    }
+        console.log('Attempting sign in with Supabase...');
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email.trim().toLowerCase(),
+            password,
+        });
+
+        if (error) {
+            console.error('Supabase signin error:', {
+                message: error.message,
+                status: error.status,
+                name: error.name,
+            });
+            
+            let userMessage = error.message || 'An error occurred during sign in';
+            
+            // Provide more specific error messages
+            if (error.message?.includes('Invalid login credentials') || error.status === 400) {
+                userMessage = 'Invalid email or password. Please check your credentials and try again.\n\n' +
+                    'If you just created an account, make sure:\n' +
+                    '1. You confirmed your email (if email confirmation is enabled)\n' +
+                    '2. You used the correct email and password\n' +
+                    '3. The user was created successfully in Supabase';
+            } else if (error.message?.includes('Email not confirmed')) {
+                userMessage = 'Please confirm your email address before signing in. Check your inbox for a confirmation email.';
+            } else if (error.message?.includes('Too many requests')) {
+                userMessage = 'Too many sign-in attempts. Please wait a few minutes and try again.';
+            } else if (error.message?.includes('User not found')) {
+                userMessage = 'No account found with this email address. Please check your email or sign up for a new account.';
+            }
+            
+            // Log additional debugging info in development
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Debug info:', {
+                    email: email.trim().toLowerCase(),
+                    supabaseUrl: supabaseUrl?.substring(0, 30) + '...',
+                    errorCode: error.status,
+                    errorName: error.name,
+                });
+            }
+            
+            throw new Error(userMessage);
+        }
+
+        if (!data || !data.user) {
+            console.error('Sign in returned no user data:', { data });
+            throw new Error('Sign in succeeded but no user data was returned.');
+        }
+
+        console.log('Sign in successful:', data.user.email);
+        return data;
+    } catch (error) {
+        console.error('Sign in error:', error);
+        throw error;
+    }
 }
 
 export async function signUp(email: string, password: string, fullName: string, role: UserRole) {
