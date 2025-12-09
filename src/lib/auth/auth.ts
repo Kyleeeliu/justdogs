@@ -14,22 +14,66 @@ export async function signIn(email: string, password: string) {
             throw new Error('Supabase client is not initialized. Please check your environment variables.');
         }
 
+        // Check if Supabase URL and key are configured
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        
+        if (!supabaseUrl || !supabaseKey) {
+            console.error('Missing Supabase environment variables:', {
+                hasUrl: !!supabaseUrl,
+                hasKey: !!supabaseKey,
+            });
+            throw new Error('Supabase is not configured. Please check your environment variables.');
+        }
+
+        // Validate email format
+        if (!email || !email.includes('@')) {
+            throw new Error('Please enter a valid email address.');
+        }
+
+        // Validate password
+        if (!password || password.length < 1) {
+            throw new Error('Please enter your password.');
+        }
+
+        console.log('Attempting sign in with Supabase...');
         const { data, error } = await supabase.auth.signInWithPassword({
-            email,
+            email: email.trim().toLowerCase(),
             password,
         });
 
         if (error) {
-            console.error('Supabase signin error:', error);
+            console.error('Supabase signin error:', {
+                message: error.message,
+                status: error.status,
+                name: error.name,
+            });
             
             let userMessage = error.message || 'An error occurred during sign in';
             
-            if (error.message?.includes('Invalid login credentials')) {
-                userMessage = 'Invalid email or password. Please try again.';
+            // Provide more specific error messages
+            if (error.message?.includes('Invalid login credentials') || error.status === 400) {
+                userMessage = 'Invalid email or password. Please check your credentials and try again.\n\n' +
+                    'If you just created an account, make sure:\n' +
+                    '1. You confirmed your email (if email confirmation is enabled)\n' +
+                    '2. You used the correct email and password\n' +
+                    '3. The user was created successfully in Supabase';
             } else if (error.message?.includes('Email not confirmed')) {
-                userMessage = 'Please confirm your email address before signing in.';
+                userMessage = 'Please confirm your email address before signing in. Check your inbox for a confirmation email.';
             } else if (error.message?.includes('Too many requests')) {
-                userMessage = 'Too many sign-in attempts. Please try again later.';
+                userMessage = 'Too many sign-in attempts. Please wait a few minutes and try again.';
+            } else if (error.message?.includes('User not found')) {
+                userMessage = 'No account found with this email address. Please check your email or sign up for a new account.';
+            }
+            
+            // Log additional debugging info in development
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Debug info:', {
+                    email: email.trim().toLowerCase(),
+                    supabaseUrl: supabaseUrl?.substring(0, 30) + '...',
+                    errorCode: error.status,
+                    errorName: error.name,
+                });
             }
             
             throw new Error(userMessage);
@@ -102,62 +146,58 @@ export async function signUp(email: string, password: string, fullName: string, 
             throw new Error(error.message);
         }
 
-        console.log('Supabase signup successful:', data);
-        
-        // 2. Manually create the user profile in the public.users table
-        if (data.user) {
-            try {
-                // Check if user profile already exists (to handle race conditions, though trigger is gone)
-                const { data: existingUser, error: checkError } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('id', data.user.id)
-                    .maybeSingle();
+        console.log('Supabase signup successful:', data);
+        
+        // 2. Create the user profile in the public.users table using API route
+        // This bypasses RLS by using the service role key on the server
+        if (data.user) {
+            try {
+                // Use API route to create profile (bypasses RLS)
+                const response = await fetch('/api/auth/create-profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: data.user.id,
+                        email: data.user.email!,
+                        fullName: fullName,
+                        role: role,
+                        phone: undefined,
+                        avatarUrl: undefined,
+                        approvalStatus: role === 'trainer' ? 'pending' : 'approved',
+                    }),
+                });
 
-                if (checkError && checkError.code !== 'PGRST116') {
-                    console.error('Error checking existing user:', checkError);
-                    throw checkError;
-                }
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(errorData.error || `Failed to create user profile: ${response.statusText}`);
+                }
 
-                if (!existingUser) {
-// CRITICAL: This is the INSERT call that the database RLS policies allow
-await createUser(
-    {
-        email: data.user.email!,
-        full_name: fullName,
-        role: role,
-        phone: undefined,
-        avatar_url: undefined,
-        approval_status: role === 'trainer' ? 'pending' : 'approved',
-    },
-    data.user.id // Use the auth user ID
-);
-                    console.log('User profile created successfully');
-                } else {
-                    console.log('User profile already exists');
-                }
-} catch (profileError) {
-    // Log the error in multiple ways to ensure we capture all information
-    console.error('Error creating user profile - Raw error:', profileError);
-    console.error('Error creating user profile - Stringified:', JSON.stringify(profileError, null, 2));
-    console.error('Error creating user profile - Details:', {
-        message: profileError instanceof Error ? profileError.message : 'Unknown error',
-        stack: profileError instanceof Error ? profileError.stack : undefined,
-        name: profileError instanceof Error ? profileError.name : 'Unknown',
-    });
-    
-    // Also log all enumerable properties if it's an object
-    if (typeof profileError === 'object' && profileError !== null) {
-        console.error('Error creating user profile - All properties:', Object.getOwnPropertyNames(profileError).reduce((acc, key) => {
-            acc[key] = (profileError as any)[key];
-            return acc;
-        }, {} as any));
-    }
-    
-    // Re-throw the original error to be caught by register/page.tsx
-    throw profileError;
-}
-        }
+                const profileData = await response.json();
+                console.log('User profile created successfully via API:', profileData.user?.email);
+            } catch (profileError) {
+                // Log the error in multiple ways to ensure we capture all information
+                console.error('Error creating user profile - Raw error:', profileError);
+                console.error('Error creating user profile - Stringified:', JSON.stringify(profileError, null, 2));
+                console.error('Error creating user profile - Details:', {
+                    message: profileError instanceof Error ? profileError.message : 'Unknown error',
+                    stack: profileError instanceof Error ? profileError.stack : undefined,
+                    name: profileError instanceof Error ? profileError.name : 'Unknown',
+                });
+                
+                // Also log all enumerable properties if it's an object
+                if (typeof profileError === 'object' && profileError !== null) {
+                    console.error('Error creating user profile - All properties:', Object.getOwnPropertyNames(profileError).reduce((acc, key) => {
+                        acc[key] = (profileError as any)[key];
+                        return acc;
+                    }, {} as any));
+                }
+                
+                // Re-throw the original error to be caught by register/page.tsx
+                throw profileError;
+            }
+        }
         
         // 3. Handle different flows based on user role
         if (role === 'trainer') {

@@ -3,17 +3,24 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { 
   PlusIcon, 
   CalendarIcon,
   ClockIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  XCircleIcon
+  XCircleIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline';
 import { getCurrentUser } from '@/lib/auth/auth';
-import { User, Booking, BookingStatus, BookingType } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { User, Booking, BookingStatus, BookingType, Dog } from '@/types';
 import { formatDateTime, formatTime, getStatusColor } from '@/lib/utils';
+import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
+import { getDogsByOwner, getAllDogs } from '@/lib/database/dogs';
+import { getUsersByRole } from '@/lib/supabase/users';
 
 // Mock data for demonstration
 const mockBookings: Booking[] = [
@@ -94,41 +101,139 @@ const getBookingTypeColor = (type: BookingType) => {
 };
 
 export default function BookingsPage() {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading: authLoading } = useAuth(); // Use useAuth hook for consistent user state
   const [bookings, setBookings] = useState<Booking[]>(mockBookings);
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start as false since user comes from useAuth
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [dogs, setDogs] = useState<Array<{ id: string; name: string }>>([]);
+  const [trainers, setTrainers] = useState<Array<{ id: string; name: string; full_name: string }>>([]);
+  const [loadingDogs, setLoadingDogs] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [trainerFilter, setTrainerFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<BookingType | 'all'>('all');
 
   useEffect(() => {
-    const loadUser = async () => {
+    if (!user) return; // Wait for user from useAuth
+    
+    // Filter bookings based on user role
+    if (user.role === 'parent') {
+      // Parents only see their own bookings
+      setBookings(mockBookings.filter(booking => booking.parent_id === user.id));
+    } else if (user.role === 'trainer') {
+      // Trainers see their assigned bookings
+      setBookings(mockBookings.filter(booking => booking.trainer_id === user.id));
+    } else {
+      // Admins see all bookings
+      setBookings(mockBookings);
+    }
+  }, [user]);
+
+  // Load dogs and trainers when modal opens
+  useEffect(() => {
+    const loadBookingData = async () => {
+      if (!showCreateModal || !user) return;
+
+      setLoadingDogs(true);
       try {
-        const currentUser = await getCurrentUser();
-        setUser(currentUser);
-        
-        // Filter bookings based on user role
-        if (currentUser?.role === 'parent') {
-          // Parents only see their own bookings
-          setBookings(mockBookings.filter(booking => booking.parent_id === currentUser.id));
-        } else if (currentUser?.role === 'trainer') {
-          // Trainers see their assigned bookings
-          setBookings(mockBookings.filter(booking => booking.trainer_id === currentUser.id));
+        // Load dogs
+        let userDogs: Dog[] = [];
+        if (user.role === 'parent') {
+          userDogs = getDogsByOwner(user.id);
         } else {
-          // Admins see all bookings
-          setBookings(mockBookings);
+          userDogs = getAllDogs();
         }
+        setDogs(userDogs.map(dog => ({ id: dog.id, name: dog.name })));
+
+        // Load trainers
+        const trainersList = await getUsersByRole('trainer');
+        setTrainers(trainersList.map(trainer => ({ 
+          id: trainer.id, 
+          name: trainer.full_name,
+          full_name: trainer.full_name 
+        })));
       } catch (error) {
-        console.error('Error loading user:', error);
+        console.error('Error loading booking data:', error);
       } finally {
-        setLoading(false);
+        setLoadingDogs(false);
       }
     };
 
-    loadUser();
-  }, []);
+    loadBookingData();
+  }, [showCreateModal, user]);
 
-  const filteredBookings = bookings.filter(booking => 
-    filter === 'all' || booking.status === filter
-  );
+  const handleCreateBooking = async (bookingData: BookingFormData) => {
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Get the dog's owner ID
+    // For parents, use their own ID; for admins, get it from the dog
+    let parentId: string;
+    if (user.role === 'parent') {
+      parentId = user.id;
+    } else {
+      // For admins, get the dog's owner
+      const dogDetails = getAllDogs().find(d => d.id === bookingData.dog_id);
+      if (!dogDetails) {
+        throw new Error('Dog details not found');
+      }
+      parentId = dogDetails.owner_id;
+    }
+
+    // Create booking via API
+    const response = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...bookingData,
+        parent_id: parentId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || 'Failed to create booking');
+    }
+
+    const result = await response.json();
+    
+    // Handle recurring bookings (returns array) or single booking
+    if (result.bookings && Array.isArray(result.bookings)) {
+      // Add all recurring bookings to the list
+      setBookings(prev => [...result.bookings, ...prev]);
+      alert(`Successfully created ${result.bookings.length} recurring booking(s)!`);
+    } else if (result.booking) {
+      // Single booking
+      setBookings(prev => [result.booking, ...prev]);
+    }
+  };
+
+  const filteredBookings = bookings.filter(booking => {
+    // Status filter
+    if (filter !== 'all' && booking.status !== filter) return false;
+    
+    // Search query (searches in booking type, location, special instructions)
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        booking.booking_type.toLowerCase().includes(query) ||
+        booking.location?.toLowerCase().includes(query) ||
+        booking.special_instructions?.toLowerCase().includes(query);
+      if (!matchesSearch) return false;
+    }
+    
+    // Trainer filter
+    if (trainerFilter !== 'all' && booking.trainer_id !== trainerFilter) return false;
+    
+    // Type filter
+    if (typeFilter !== 'all' && booking.booking_type !== typeFilter) return false;
+    
+    return true;
+  });
 
   const upcomingBookings = bookings.filter(booking => 
     new Date(booking.start_time) > new Date() && booking.status !== 'cancelled'
@@ -140,7 +245,7 @@ export default function BookingsPage() {
     return bookingDate.toDateString() === today.toDateString();
   });
 
-  if (loading) {
+  if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(0_32_96)]"></div>
@@ -150,15 +255,18 @@ export default function BookingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div className="flex-1">
           <h1 className="text-3xl font-bold text-gray-900">Bookings</h1>
           <p className="text-gray-600">
             Manage training sessions and appointments
           </p>
         </div>
-        {(user?.role === 'admin' || user?.role === 'parent') && (
-          <Button className="mt-4 sm:mt-0">
+        {user && (user.role === 'admin' || user.role === 'parent') && (
+          <Button 
+            className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white flex-shrink-0 min-w-[140px] shadow-md"
+            onClick={() => setShowCreateModal(true)}
+          >
             <PlusIcon className="h-4 w-4 mr-2" />
             New Booking
           </Button>
@@ -222,7 +330,77 @@ export default function BookingsPage() {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Search and Filters */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Search Bar */}
+          <div className="flex-1 relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search bookings by type, location, or notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          
+          {/* Filter Toggle */}
+          <Button
+            variant="outline"
+            onClick={() => setShowFilters(!showFilters)}
+            className="border-[rgb(0_32_96)] text-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)] hover:text-white"
+          >
+            <FunnelIcon className="h-4 w-4 mr-2" />
+            Filters
+          </Button>
+        </div>
+
+        {/* Advanced Filters */}
+        {showFilters && (
+          <Card className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Trainer
+                </label>
+                <select
+                  value={trainerFilter}
+                  onChange={(e) => setTrainerFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
+                >
+                  <option value="all">All Trainers</option>
+                  {trainers.map(trainer => (
+                    <option key={trainer.id} value={trainer.id}>
+                      {trainer.full_name || trainer.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Booking Type
+                </label>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as BookingType | 'all')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
+                >
+                  <option value="all">All Types</option>
+                  <option value="dog_training">Dog Training</option>
+                  <option value="private_training">Private Training</option>
+                  <option value="consult">Consultation</option>
+                  <option value="dog_sitting">Dog Sitting</option>
+                  <option value="pet_care">Pet Care</option>
+                </select>
+              </div>
+            </div>
+          </Card>
+        )}
+      </div>
+
+      {/* Status Filters */}
       <div className="flex flex-wrap gap-2">
         <Button
           variant={filter === 'all' ? 'default' : 'outline'}
@@ -344,8 +522,39 @@ export default function BookingsPage() {
             <p className="text-gray-600">
               {filter === 'all' ? 'Get started by creating your first booking.' : `No ${filter} bookings found.`}
             </p>
+            {user && (user.role === 'admin' || user.role === 'parent') && filter === 'all' && (
+              <Button 
+                className="mt-4 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <PlusIcon className="h-4 w-4 mr-2" />
+                Create Your First Booking
+              </Button>
+            )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Floating Action Button for Mobile - Always Visible */}
+      {user && (user.role === 'admin' || user.role === 'parent') && (
+        <Button
+          className="fixed bottom-20 right-4 lg:hidden bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white rounded-full h-14 w-14 shadow-lg z-50 flex items-center justify-center"
+          onClick={() => setShowCreateModal(true)}
+          aria-label="New Booking"
+        >
+          <PlusIcon className="h-6 w-6" />
+        </Button>
+      )}
+
+      {/* Create Booking Modal */}
+      {user && (
+        <CreateBookingModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleCreateBooking}
+          dogs={dogs}
+          trainers={trainers}
+        />
       )}
     </div>
   );
