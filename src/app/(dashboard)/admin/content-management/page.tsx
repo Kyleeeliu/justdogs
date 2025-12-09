@@ -31,6 +31,13 @@ import {
   type TeamMember,
   type GalleryImage
 } from '@/lib/supabase/content';
+import { getAllUsers, updateUser } from '@/lib/supabase/users';
+import {
+  uploadGalleryImage,
+  replaceGalleryImage,
+  deleteGalleryImage as deleteStorageImage,
+  initializeGalleryBucket
+} from '@/lib/supabase/storage';
 import {
   PlusIcon,
   PencilIcon,
@@ -40,7 +47,10 @@ import {
   UsersIcon,
   CogIcon,
   PhotoIcon,
-  UserPlusIcon
+  UserPlusIcon,
+  CheckIcon,
+  XMarkIcon,
+  CloudArrowUpIcon
 } from '@heroicons/react/24/outline';
 
 interface NewsItem {
@@ -52,21 +62,6 @@ interface NewsItem {
   published: boolean;
 }
 
-interface ServiceItem {
-  id: string;
-  name: string;
-  description: string;
-  category: 'behaviour' | 'farm' | 'academy' | 'service';
-  active: boolean;
-}
-
-interface TeamMember {
-  id: string;
-  name: string;
-  role: string;
-  bio: string;
-  active: boolean;
-}
 
 export default function ContentManagementPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -113,6 +108,9 @@ export default function ContentManagementPage() {
     if (user?.role !== 'admin') return;
     const loadData = async () => {
       try {
+        // Initialize Supabase Storage bucket
+        await initializeGalleryBucket();
+
         // Fetch news from API (DB-backed)
         const res = await fetch('/api/news', { cache: 'no-store' });
         if (!res.ok) {
@@ -136,12 +134,17 @@ export default function ContentManagementPage() {
           );
         }
 
-        // keep services/team using existing in-memory helpers for now
-        setServices(getAllServices());
-        setTeamMembers(getAllTeamMembers());
+        // Load services and team from Supabase
+        const servicesData = await getSupabaseServices();
+        const teamData = await getSupabaseTeamMembers();
+        const galleryData = await getAllGalleryImages();
+        
+        setServices(servicesData);
+        setTeamMembers(teamData);
+        setGalleryImages(galleryData);
 
-        // Load pending trainers from localStorage
-        loadPendingTrainers();
+        // Load pending trainers from Supabase
+        await loadPendingTrainers();
       } catch (error) {
         console.error('Error loading content data:', error);
       }
@@ -150,66 +153,33 @@ export default function ContentManagementPage() {
     loadData();
   }, [user]);
 
-  // Function to load pending trainers from localStorage
-  const loadPendingTrainers = () => {
-    const pending: User[] = [];
-
-    // Check localStorage for pending trainers
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('pendingTrainer_')) {
-        try {
-          const trainerData = localStorage.getItem(key);
-          if (trainerData) {
-            const trainer = JSON.parse(trainerData);
-            if (trainer.approval_status === 'pending') {
-              pending.push(trainer);
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing pending trainer data:', error);
-        }
-      }
+  // Function to load pending trainers from Supabase
+  const loadPendingTrainers = async () => {
+    try {
+      const allUsers = await getAllUsers();
+      const pending = allUsers.filter(user =>
+        user.role === 'trainer' && user.approval_status === 'pending'
+      );
+      setPendingTrainers(pending);
+    } catch (error) {
+      console.error('Error loading pending trainers:', error);
     }
-
-    setPendingTrainers(pending);
   };
 
   // Function to approve/reject trainer
-  const handleTrainerApproval = async (trainerId: string, email: string, action: 'approve' | 'reject') => {
+  const handleTrainerApproval = async (trainerId: string, action: 'approve' | 'reject') => {
     try {
-      const trainerKey = `pendingTrainer_${email}`;
-      const trainerData = localStorage.getItem(trainerKey);
-
-      if (!trainerData) {
-        console.error('Trainer data not found');
-        return;
-      }
-
-      const trainer = JSON.parse(trainerData);
-
-      if (action === 'approve') {
-        // Update trainer status to approved
-        trainer.approval_status = 'approved';
-
-        // Move from pending to approved - store as regular user
-        localStorage.setItem(`newUser_${email}`, JSON.stringify(trainer));
-        localStorage.removeItem(trainerKey);
-
-        console.log('Trainer approved:', trainer);
-      } else {
-        // Update trainer status to rejected
-        trainer.approval_status = 'rejected';
-        localStorage.setItem(trainerKey, JSON.stringify(trainer));
-
-        console.log('Trainer rejected:', trainer);
-      }
-
-      // Reload pending trainers
-      loadPendingTrainers();
-
+      const newStatus: ApprovalStatus = action === 'approve' ? 'approved' : 'rejected';
+      
+      await updateUser(trainerId, { approval_status: newStatus });
+      
+      // Remove from pending list
+      setPendingTrainers(prev => prev.filter(trainer => trainer.id !== trainerId));
+      
+      alert(`Trainer ${action}d successfully!`);
     } catch (error) {
-      console.error('Error handling trainer approval:', error);
+      console.error(`Error ${action}ing trainer:`, error);
+      alert(`Failed to ${action} trainer. Please try again.`);
     }
   };
 
@@ -273,6 +243,13 @@ export default function ContentManagementPage() {
         const updated = await getSupabaseTeamMembers();
         setTeamMembers(updated);
       } else if (type === 'gallery') {
+        // Find the gallery image to get its URL for storage deletion
+        const imageToDelete = galleryImages.find(img => img.id === id);
+        if (imageToDelete?.image_url) {
+          // Delete from storage first
+          await deleteStorageImage(imageToDelete.image_url);
+        }
+        // Delete from database
         await deleteGalleryImage(id);
         const updated = await getAllGalleryImages();
         setGalleryImages(updated);
@@ -350,9 +327,32 @@ export default function ContentManagementPage() {
         const updated = await getSupabaseTeamMembers();
         setTeamMembers(updated);
       } else if (newItem.type === 'gallery') {
+        let imageUrl = newItem.image_url;
+
+        // Handle file upload
+        if (newItem.imageFile) {
+          if (newItem.id && newItem.image_url) {
+            // Replace existing image
+            const uploadResult = await replaceGalleryImage(newItem.image_url, newItem.imageFile);
+            if (!uploadResult.success) {
+              alert(`Failed to upload image: ${uploadResult.error}`);
+              return;
+            }
+            imageUrl = uploadResult.url;
+          } else {
+            // Upload new image
+            const uploadResult = await uploadGalleryImage(newItem.imageFile);
+            if (!uploadResult.success) {
+              alert(`Failed to upload image: ${uploadResult.error}`);
+              return;
+            }
+            imageUrl = uploadResult.url;
+          }
+        }
+
         if (newItem.id) {
           await updateGalleryImage(newItem.id, {
-            image_url: newItem.image_url,
+            image_url: imageUrl,
             title: newItem.title,
             description: newItem.description,
             dog_name: newItem.dog_name,
@@ -361,7 +361,7 @@ export default function ContentManagementPage() {
           });
         } else {
           await addGalleryImage({
-            image_url: newItem.image_url,
+            image_url: imageUrl,
             title: newItem.title,
             description: newItem.description,
             dog_name: newItem.dog_name,
@@ -634,60 +634,67 @@ export default function ContentManagementPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Trainer Approvals</h2>
-        <div className="text-sm text-gray-600">
-          {pendingTrainers.length} pending approval{pendingTrainers.length !== 1 ? 's' : ''}
+        <div className="flex items-center space-x-2 text-sm text-gray-600">
+          <UserPlusIcon className="h-4 w-4" />
+          <span>{pendingTrainers.length} pending approval{pendingTrainers.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
 
       {pendingTrainers.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
-            <div className="text-gray-400 text-6xl mb-4">✅</div>
+            <UserPlusIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Pending Approvals</h3>
-            <p className="text-gray-600">All trainer applications have been processed.</p>
+            <p className="text-gray-500">All trainer applications have been processed.</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
+        <div className="space-y-4">
           {pendingTrainers.map((trainer) => (
-            <Card key={trainer.id} className="hover:shadow-md transition-shadow">
+            <Card key={trainer.id} className="border-l-4 border-l-yellow-400">
               <CardContent className="p-6">
-                <div className="flex justify-between items-start">
+                <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="px-3 py-1 text-sm rounded-full bg-yellow-100 text-yellow-800 font-medium">
-                        Pending Approval
-                      </span>
-                      <span className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800">
-                        Trainer
-                      </span>
+                    <div className="flex items-center space-x-3 mb-2">
+                      <div className="w-10 h-10 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center">
+                        <span className="text-white font-medium">
+                          {trainer.full_name.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-gray-900">{trainer.full_name}</h3>
+                        <p className="text-sm text-gray-500">{trainer.email}</p>
+                      </div>
                     </div>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{trainer.full_name}</h3>
-                    <p className="text-gray-600 mb-2">
-                      <span className="font-medium">Email:</span> {trainer.email}
-                    </p>
+                    <div className="flex items-center space-x-4 text-sm text-gray-600">
+                      <div className="flex items-center space-x-1">
+                        <span>Applied: {new Date(trainer.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Pending Approval
+                        </span>
+                      </div>
+                    </div>
                     {trainer.phone && (
-                      <p className="text-gray-600 mb-2">
-                        <span className="font-medium">Phone:</span> {trainer.phone}
-                      </p>
+                      <p className="text-sm text-gray-600 mt-1">Phone: {trainer.phone}</p>
                     )}
-                    <p className="text-sm text-gray-500">
-                      Applied: {new Date(trainer.created_at).toLocaleDateString()}
-                    </p>
                   </div>
-                  <div className="flex gap-3 ml-6">
+                  <div className="flex items-center space-x-3">
                     <Button
-                      onClick={() => handleTrainerApproval(trainer.id, trainer.email, 'approve')}
-                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => handleTrainerApproval(trainer.id, 'reject')}
+                      variant="outline"
+                      className="border-red-300 text-red-700 hover:bg-red-50"
                     >
-                      ✓ Approve
+                      <XMarkIcon className="h-4 w-4 mr-2" />
+                      Reject
                     </Button>
                     <Button
-                      onClick={() => handleTrainerApproval(trainer.id, trainer.email, 'reject')}
-                      variant="outline"
-                      className="text-red-600 border-red-600 hover:bg-red-50"
+                      onClick={() => handleTrainerApproval(trainer.id, 'approve')}
+                      className="bg-green-600 hover:bg-green-700 text-white"
                     >
-                      ✗ Reject
+                      <CheckIcon className="h-4 w-4 mr-2" />
+                      Approve
                     </Button>
                   </div>
                 </div>
@@ -745,7 +752,9 @@ export default function ContentManagementPage() {
             <CardHeader>
               <CardTitle>
                 {editingItem?.id ? 'Edit' : 'Add'} {editingItem?.type === 'news' ? 'News Item' :
-                  editingItem?.type === 'services' ? 'Service' : 'Team Member'}
+                  editingItem?.type === 'services' ? 'Service' :
+                  editingItem?.type === 'team' ? 'Team Member' :
+                  editingItem?.type === 'gallery' ? 'Gallery Image' : 'Item'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -775,13 +784,60 @@ function ContentForm({ item, onSave, onCancel }: { item: any; onSave: (data: any
     type: item?.type || 'news',
     category: item?.category || 'behaviour',
     published: item?.published ?? true,
-    active: item?.active ?? true
+    active: item?.active ?? true,
+    // Gallery specific fields
+    image_url: item?.image_url || '',
+    dog_name: item?.dog_name || '',
+    display_order: item?.display_order || 0
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(item?.image_url || null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      
+      // Validate file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+
+      setSelectedFile(file);
+      
+      // Create preview URL
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // include id when editing so handleSave can PATCH
-    onSave({ ...formData, id: item?.id });
+    
+    // For gallery items, ensure we have either an existing image or a new file
+    if (item?.type === 'gallery' && !selectedFile && !formData.image_url) {
+      alert('Please select an image file');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // include id when editing so handleSave can PATCH
+      onSave({
+        ...formData,
+        id: item?.id,
+        imageFile: selectedFile // Pass the file to handleSave
+      });
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -926,12 +982,127 @@ function ContentForm({ item, onSave, onCancel }: { item: any; onSave: (data: any
         </>
       )}
 
+      {item?.type === 'gallery' && (
+        <>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {item?.id ? 'Replace Image' : 'Upload Image'}
+            </label>
+            <div className="space-y-4">
+              {/* File Input */}
+              <div className="flex items-center justify-center w-full">
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <CloudArrowUpIcon className="w-8 h-8 mb-4 text-gray-500" />
+                    <p className="mb-2 text-sm text-gray-500">
+                      <span className="font-semibold">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
+                  </div>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    required={!item?.id && !formData.image_url}
+                  />
+                </label>
+              </div>
+
+              {/* Image Preview */}
+              {previewUrl && (
+                <div className="relative">
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="w-full h-48 object-cover rounded-lg border"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/api/placeholder/400/300';
+                    }}
+                  />
+                  {selectedFile && (
+                    <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded text-xs">
+                      New Image Selected
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedFile && (
+                <div className="text-sm text-gray-600">
+                  Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title (Optional)</label>
+            <Input
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="Image title"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dog Name (Optional)</label>
+            <Input
+              value={formData.dog_name}
+              onChange={(e) => setFormData({ ...formData, dog_name: e.target.value })}
+              placeholder="Dog's name"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              placeholder="Brief description of the image"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Display Order</label>
+            <Input
+              type="number"
+              value={formData.display_order}
+              onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })}
+              placeholder="0"
+              min="0"
+            />
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="active-gallery"
+              checked={formData.active}
+              onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
+              className="mr-2"
+            />
+            <label htmlFor="active-gallery" className="text-sm text-gray-700">Active (visible on gallery page)</label>
+          </div>
+        </>
+      )}
+
       <div className="flex justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={uploading}>
           Cancel
         </Button>
-        <Button type="submit" className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white">
-          {item?.id ? 'Update' : 'Create'}
+        <Button
+          type="submit"
+          className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+          disabled={uploading}
+        >
+          {uploading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              {item?.type === 'gallery' ? 'Uploading...' : 'Saving...'}
+            </>
+          ) : (
+            <>
+              {item?.id ? 'Update' : 'Create'}
+            </>
+          )}
         </Button>
       </div>
     </form>

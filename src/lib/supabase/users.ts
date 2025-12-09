@@ -160,6 +160,8 @@ export const getUserByEmail = async (email: string): Promise<User | null> => {
 };
 
 export const updateUser = async (id: string, updates: Partial<Omit<User, 'id' | 'created_at'>>): Promise<User | null> => {
+  console.log('updateUser: Updating user with ID:', id, 'Updates:', updates);
+  
   const { data, error } = await supabase
     .from(USERS_TABLE)
     .update({
@@ -171,10 +173,28 @@ export const updateUser = async (id: string, updates: Partial<Omit<User, 'id' | 
     .single();
 
   if (error) {
-    console.error('Error updating user:', error);
+    // Enhanced error logging similar to createUser
+    console.error('Error updating user - Raw error:', error);
+    console.error('Error updating user - Stringified:', JSON.stringify(error, null, 2));
+    console.error('Error updating user - Properties:', {
+      message: error?.message || 'No message',
+      code: error?.code || 'No code',
+      details: error?.details || 'No details',
+      hint: error?.hint || 'No hint',
+      statusCode: (error as any)?.statusCode || 'No status code',
+      name: error?.name || 'No name',
+    });
+    
+    // Also log all enumerable properties
+    console.error('Error updating user - All properties:', Object.getOwnPropertyNames(error).reduce((acc, key) => {
+      acc[key] = (error as any)[key];
+      return acc;
+    }, {} as any));
+    
     return null;
   }
 
+  console.log('updateUser: User updated successfully:', data?.id);
   return data as User;
 };
 

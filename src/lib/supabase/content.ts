@@ -48,11 +48,11 @@ export const getAllServices = async (): Promise<ServiceItem[]> => {
 
     if (error) {
       // Check if table doesn't exist (common error codes: 42P01, 42704)
-      if (error.code === '42P01' || error.code === '42704' || error.message?.includes('does not exist')) {
+      if (error.code === '42P01' || error.code === '42704' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
         console.warn('Services table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
         return [];
       }
-      console.error('Error fetching services:', error.message, error.details, error.hint);
+      console.warn('Error fetching services:', error.message, error.details, error.hint);
       return [];
     }
 
@@ -71,7 +71,7 @@ export const getAllServices = async (): Promise<ServiceItem[]> => {
       console.warn('Services table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
       return [];
     }
-    console.error('Error in getAllServices:', error);
+    console.warn('Error in getAllServices:', error);
     return [];
   }
 };
@@ -203,7 +203,12 @@ export const getAllTeamMembers = async (): Promise<TeamMember[]> => {
       .order('name', { ascending: true });
 
     if (error) {
-      console.error('Error fetching team members:', error);
+      // Check if table doesn't exist (common error codes: 42P01, 42704)
+      if (error.code === '42P01' || error.code === '42704' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        console.warn('Team members table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
+        return [];
+      }
+      console.warn('Error fetching team members:', error.message, error.details, error.hint);
       return [];
     }
 
@@ -218,7 +223,12 @@ export const getAllTeamMembers = async (): Promise<TeamMember[]> => {
       updated_at: item.updated_at,
     }));
   } catch (error) {
-    console.error('Error in getAllTeamMembers:', error);
+    // Handle case where table doesn't exist
+    if (error instanceof Error && (error.message.includes('does not exist') || error.message.includes('schema cache'))) {
+      console.warn('Team members table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
+      return [];
+    }
+    console.warn('Error in getAllTeamMembers:', error);
     return [];
   }
 };
@@ -356,7 +366,12 @@ export const getAllGalleryImages = async (): Promise<GalleryImage[]> => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching gallery images:', error);
+      // Check if table doesn't exist (common error codes: 42P01, 42704)
+      if (error.code === '42P01' || error.code === '42704' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        console.warn('Gallery images table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
+        return [];
+      }
+      console.warn('Error fetching gallery images:', error.message, error.details, error.hint);
       return [];
     }
 
@@ -372,7 +387,12 @@ export const getAllGalleryImages = async (): Promise<GalleryImage[]> => {
       updated_at: item.updated_at,
     }));
   } catch (error) {
-    console.error('Error in getAllGalleryImages:', error);
+    // Handle case where table doesn't exist
+    if (error instanceof Error && (error.message.includes('does not exist') || error.message.includes('schema cache'))) {
+      console.warn('Gallery images table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
+      return [];
+    }
+    console.warn('Error in getAllGalleryImages:', error);
     return [];
   }
 };
@@ -387,7 +407,12 @@ export const getGalleryImages = async (): Promise<GalleryImage[]> => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching active gallery images:', error);
+      // Check if table doesn't exist (common error codes: 42P01, 42704)
+      if (error.code === '42P01' || error.code === '42704' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        console.warn('Gallery images table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
+        return [];
+      }
+      console.warn('Error fetching active gallery images:', error.message, error.details, error.hint);
       return [];
     }
 
@@ -403,7 +428,12 @@ export const getGalleryImages = async (): Promise<GalleryImage[]> => {
       updated_at: item.updated_at,
     }));
   } catch (error) {
-    console.error('Error in getGalleryImages:', error);
+    // Handle case where table doesn't exist
+    if (error instanceof Error && (error.message.includes('does not exist') || error.message.includes('schema cache'))) {
+      console.warn('Gallery images table does not exist yet. Please run the migration: supabase-migration-content-management.sql');
+      return [];
+    }
+    console.warn('Error in getGalleryImages:', error);
     return [];
   }
 };

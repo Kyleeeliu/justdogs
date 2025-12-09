@@ -790,7 +790,7 @@ const handleSendMessage = async () => {
                       {getConversationName(selectedConversation)}
                     </h3>
                     <p className="text-sm text-gray-500">
-                      {selectedConversation.id === 'announcements' ? 'System announcements' : 'Online'}
+                      {selectedConversation.id === 'announcements' ? 'System announcements' : ''}
                     </p>
                   </div>
                 </div>
@@ -822,6 +822,36 @@ const handleSendMessage = async () => {
                       )}
 
                       <p className="whitespace-pre-wrap">{message.content}</p>
+
+                      {/* Display attachments/images */}
+                      {message.attachments && message.attachments.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                          {message.attachments.map((attachment, index) => (
+                            <div key={attachment.id || index}>
+                              {attachment.file_type.startsWith('image/') ? (
+                                <img
+                                  src={attachment.file_url}
+                                  alt={attachment.file_name}
+                                  className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => window.open(attachment.file_url, '_blank')}
+                                />
+                              ) : (
+                                <div className="flex items-center space-x-2 bg-white/10 p-2 rounded">
+                                  <PaperClipIcon className="h-4 w-4" />
+                                  <a
+                                    href={attachment.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm underline hover:no-underline"
+                                  >
+                                    {attachment.file_name}
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between mt-1">
                         <span className="text-xs opacity-70">

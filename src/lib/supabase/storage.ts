@@ -1,81 +1,75 @@
 import { supabase } from './client';
 
-const STORAGE_BUCKET = 'message-media';
+// Storage bucket name for gallery images
+const GALLERY_BUCKET = 'gallery-images';
 
-// Check if Supabase is properly configured
-const isSupabaseConfigured = () => {
-  return process.env.NEXT_PUBLIC_SUPABASE_URL &&
-         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-         process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co';
-};
+export interface UploadResult {
+  success: boolean;
+  url?: string;
+  error?: string;
+}
 
-/**
- * Upload a file to Supabase Storage
- * @param file - The file to upload
- * @param userId - The user ID for organizing files
- * @param fileType - 'image' or 'video'
- * @returns The public URL of the uploaded file or null if in mock mode
- */
-export const uploadMessageMedia = async (
-  file: File,
-  userId: string,
-  fileType: 'image' | 'video'
-): Promise<string | null> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Mock mode: Simulating file upload');
-    // In mock mode, create a local blob URL
-    return URL.createObjectURL(file);
-  }
-
+export const uploadGalleryImage = async (file: File): Promise<UploadResult> => {
   try {
     // Generate a unique filename
     const fileExt = file.name.split('.').pop();
-    const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = `${fileType}s/${fileName}`;
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `gallery/${fileName}`;
 
-    console.log('Uploading file to Supabase Storage:', filePath);
+    console.log('Uploading gallery image:', fileName);
 
     // Upload file to Supabase Storage
     const { data, error } = await supabase.storage
-      .from(STORAGE_BUCKET)
+      .from(GALLERY_BUCKET)
       .upload(filePath, file, {
         cacheControl: '3600',
-        upsert: false,
+        upsert: false
       });
 
     if (error) {
       console.error('Error uploading file:', error);
-      throw error;
+      return {
+        success: false,
+        error: error.message
+      };
     }
 
     // Get public URL
     const { data: { publicUrl } } = supabase.storage
-      .from(STORAGE_BUCKET)
+      .from(GALLERY_BUCKET)
       .getPublicUrl(filePath);
 
     console.log('File uploaded successfully:', publicUrl);
-    return publicUrl;
+
+    return {
+      success: true,
+      url: publicUrl
+    };
   } catch (error) {
-    console.error('Error in uploadMessageMedia:', error);
-    // Fall back to local blob URL in case of error
-    return URL.createObjectURL(file);
+    console.error('Exception during file upload:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
 };
 
-/**
- * Delete a file from Supabase Storage
- * @param filePath - The path of the file to delete
- * @returns True if successful, false otherwise
- */
-export const deleteMessageMedia = async (filePath: string): Promise<boolean> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Mock mode: Simulating file deletion');
-    return true;
-  }
-
+export const deleteGalleryImage = async (url: string): Promise<boolean> => {
   try {
+    // Extract file path from URL
+    const urlParts = url.split('/');
+    const bucketIndex = urlParts.findIndex(part => part === GALLERY_BUCKET);
+    
+    if (bucketIndex === -1) {
+      console.error('Invalid gallery image URL:', url);
+      return false;
+    }
+
+    const filePath = urlParts.slice(bucketIndex + 1).join('/');
+    console.log('Deleting gallery image:', filePath);
+
     const { error } = await supabase.storage
-      .from(STORAGE_BUCKET)
+      .from(GALLERY_BUCKET)
       .remove([filePath]);
 
     if (error) {
@@ -86,139 +80,79 @@ export const deleteMessageMedia = async (filePath: string): Promise<boolean> => 
     console.log('File deleted successfully:', filePath);
     return true;
   } catch (error) {
-    console.error('Error in deleteMessageMedia:', error);
+    console.error('Exception during file deletion:', error);
     return false;
   }
 };
 
-/**
- * Validate file type and size
- * @param file - The file to validate
- * @param maxSizeMB - Maximum file size in MB
- * @returns Object with isValid and error message
- */
-export const validateMediaFile = (
-  file: File,
-  maxSizeMB: number = 10
-): { isValid: boolean; error?: string } => {
-  // Check file size
-  const maxSizeBytes = maxSizeMB * 1024 * 1024;
-  if (file.size > maxSizeBytes) {
-    return {
-      isValid: false,
-      error: `File size must be less than ${maxSizeMB}MB`,
-    };
-  }
-
-  // Check file type
-  const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-  const allowedVideoTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
-  const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
-
-  if (!allowedTypes.includes(file.type)) {
-    return {
-      isValid: false,
-      error: 'File type not supported. Please upload an image (JPEG, PNG, GIF, WebP) or video (MP4, MOV, AVI, WebM)',
-    };
-  }
-
-  return { isValid: true };
-};
-
-/**
- * Get media type from file
- * @param file - The file to check
- * @returns 'image' or 'video'
- */
-export const getMediaType = (file: File): 'image' | 'video' => {
-  return file.type.startsWith('image/') ? 'image' : 'video';
-};
-
-/**
- * Create a thumbnail for a video file
- * @param videoFile - The video file
- * @returns A blob of the thumbnail image
- */
-export const createVideoThumbnail = async (videoFile: File): Promise<Blob | null> => {
-  return new Promise((resolve) => {
-    const video = document.createElement('video');
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    video.preload = 'metadata';
-    video.muted = true;
-    video.playsInline = true;
-
-    video.onloadeddata = () => {
-      // Seek to 1 second or 10% of video duration
-      video.currentTime = Math.min(1, video.duration * 0.1);
-    };
-
-    video.onseeked = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => {
-          URL.revokeObjectURL(video.src);
-          resolve(blob);
-        }, 'image/jpeg', 0.8);
-      } else {
-        resolve(null);
-      }
-    };
-
-    video.onerror = () => {
-      URL.revokeObjectURL(video.src);
-      resolve(null);
-    };
-
-    video.src = URL.createObjectURL(videoFile);
-  });
-};
-
-/**
- * Upload video thumbnail
- * @param thumbnailBlob - The thumbnail blob
- * @param userId - The user ID
- * @param videoFileName - Original video file name for reference
- * @returns The public URL of the uploaded thumbnail
- */
-export const uploadVideoThumbnail = async (
-  thumbnailBlob: Blob,
-  userId: string,
-  videoFileName: string
-): Promise<string | null> => {
-  if (!isSupabaseConfigured()) {
-    console.log('Mock mode: Simulating thumbnail upload');
-    return URL.createObjectURL(thumbnailBlob);
-  }
-
+export const replaceGalleryImage = async (oldUrl: string, newFile: File): Promise<UploadResult> => {
   try {
-    const fileName = `${userId}/${Date.now()}-thumbnail.jpg`;
-    const filePath = `thumbnails/${fileName}`;
-
-    const { data, error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(filePath, thumbnailBlob, {
-        cacheControl: '3600',
-        upsert: false,
-      });
-
-    if (error) {
-      console.error('Error uploading thumbnail:', error);
-      return null;
+    // Upload new image first
+    const uploadResult = await uploadGalleryImage(newFile);
+    
+    if (!uploadResult.success) {
+      return uploadResult;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(filePath);
+    // Delete old image (don't fail if this doesn't work)
+    await deleteGalleryImage(oldUrl);
 
-    return publicUrl;
+    return uploadResult;
   } catch (error) {
-    console.error('Error in uploadVideoThumbnail:', error);
-    return null;
+    console.error('Exception during file replacement:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
 };
 
+// Initialize storage bucket (call this once during app setup)
+export const initializeGalleryBucket = async (): Promise<boolean> => {
+  try {
+    // Check if bucket exists
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    
+    if (listError) {
+      console.log('Note: Could not list buckets (this is normal if bucket doesn\'t exist yet):', listError.message);
+      // Continue to try creating the bucket
+    }
+
+    const bucketExists = buckets?.some(bucket => bucket.name === GALLERY_BUCKET);
+    
+    if (!bucketExists) {
+      console.log('Creating gallery images bucket...');
+      
+      const { error: createError } = await supabase.storage.createBucket(GALLERY_BUCKET, {
+        public: true,
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+        fileSizeLimit: 5242880 // 5MB
+      });
+
+      if (createError) {
+        console.log('Note: Bucket creation failed (bucket may already exist):', createError.message);
+        // Don't return false here - the bucket might already exist
+        // We'll test if we can upload to it instead
+      } else {
+        console.log('Gallery images bucket created successfully');
+      }
+    } else {
+      console.log('Gallery images bucket already exists');
+    }
+
+    // Test if we can access the bucket by trying to list files
+    const { error: testError } = await supabase.storage
+      .from(GALLERY_BUCKET)
+      .list('gallery', { limit: 1 });
+
+    if (testError) {
+      console.log('Note: Cannot access gallery bucket:', testError.message);
+      console.log('This is normal if no files have been uploaded yet or if RLS policies need to be configured in Supabase dashboard');
+    }
+
+    return true; // Return true even if there are access issues - they'll be handled during upload
+  } catch (error) {
+    console.error('Exception during bucket initialization:', error);
+    return true; // Don't fail the entire app initialization
+  }
+};

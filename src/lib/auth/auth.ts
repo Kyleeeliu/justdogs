@@ -7,45 +7,72 @@ import { getCurrentSupabaseUser, createUser } from '../supabase/users';
 // --- Functions that use the client-side global 'supabase' (OK) ---
 
 export async function signIn(email: string, password: string) {
-    console.log('SignIn attempt:', { email });
-    
-    try {
-        if (!supabase) {
-            throw new Error('Supabase client is not initialized. Please check your environment variables.');
-        }
+    console.log('SignIn attempt:', { email });
+    
+    try {
+        if (!supabase) {
+            throw new Error('Supabase client is not initialized. Please check your environment variables.');
+        }
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
 
-        if (error) {
-            console.error('Supabase signin error:', error);
-            
-            let userMessage = error.message || 'An error occurred during sign in';
-            
-            if (error.message?.includes('Invalid login credentials')) {
-                userMessage = 'Invalid email or password. Please try again.';
-            } else if (error.message?.includes('Email not confirmed')) {
-                userMessage = 'Please confirm your email address before signing in.';
-            } else if (error.message?.includes('Too many requests')) {
-                userMessage = 'Too many sign-in attempts. Please try again later.';
-            }
-            
-            throw new Error(userMessage);
-        }
+        if (error) {
+            console.error('Supabase signin error:', error);
+            
+            let userMessage = error.message || 'An error occurred during sign in';
+            
+            if (error.message?.includes('Invalid login credentials')) {
+                userMessage = 'Invalid email or password. Please try again.';
+            } else if (error.message?.includes('Email not confirmed')) {
+                userMessage = 'Please confirm your email address before signing in.';
+            } else if (error.message?.includes('Too many requests')) {
+                userMessage = 'Too many sign-in attempts. Please try again later.';
+            }
+            
+            throw new Error(userMessage);
+        }
 
-        if (!data || !data.user) {
-            console.error('Sign in returned no user data:', { data });
-            throw new Error('Sign in succeeded but no user data was returned.');
-        }
+        if (!data || !data.user) {
+            console.error('Sign in returned no user data:', { data });
+            throw new Error('Sign in succeeded but no user data was returned.');
+        }
 
-        console.log('Sign in successful:', data.user.email);
-        return data;
-    } catch (error) {
-        console.error('Sign in error:', error);
-        throw error;
-    }
+        // Check user approval status for trainers
+        if (data.user) {
+            try {
+                const userProfile = await getCurrentSupabaseUser();
+                if (userProfile && userProfile.role === 'trainer' && userProfile.approval_status === 'pending') {
+                    // Sign out the user immediately
+                    await supabase.auth.signOut();
+                    throw new Error('Your trainer account is pending admin approval. Please wait for approval before signing in.');
+                } else if (userProfile && userProfile.role === 'trainer' && userProfile.approval_status === 'rejected') {
+                    // Sign out the user immediately
+                    await supabase.auth.signOut();
+                    throw new Error('Your trainer account has been rejected. Please contact support for more information.');
+                }
+            } catch (profileError) {
+                console.error('Error checking user approval status:', profileError);
+                // If it's an approval-related error, re-throw it
+                if (profileError instanceof Error && (
+                    profileError.message.includes('pending admin approval') ||
+                    profileError.message.includes('has been rejected')
+                )) {
+                    throw profileError;
+                }
+                // For other errors, continue with login (don't block existing users)
+                console.warn('Could not check approval status, allowing login to proceed');
+            }
+        }
+
+        console.log('Sign in successful:', data.user.email);
+        return data;
+    } catch (error) {
+        console.error('Sign in error:', error);
+        throw error;
+    }
 }
 
 export async function signUp(email: string, password: string, fullName: string, role: UserRole) {
