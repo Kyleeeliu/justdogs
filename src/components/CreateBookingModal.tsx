@@ -84,8 +84,13 @@ export function CreateBookingModal({
     { value: 'general', label: 'General' }
   ];
 
-  const handleInputChange = (field: keyof BookingFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = (field: keyof BookingFormData, value: string | boolean) => {
+    // Handle boolean fields (like is_recurring)
+    if (field === 'is_recurring') {
+      setFormData(prev => ({ ...prev, [field]: value as boolean }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value as string }));
+    }
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -405,7 +410,7 @@ export function CreateBookingModal({
                   type="checkbox"
                   id="is_recurring"
                   checked={formData.is_recurring || false}
-                  onChange={(e) => handleInputChange('is_recurring', e.target.checked.toString())}
+                  onChange={(e) => handleInputChange('is_recurring', e.target.checked)}
                   disabled={submitting}
                   className="h-4 w-4 text-[rgb(0_32_96)] focus:ring-[rgb(0_32_96)] border-gray-300 rounded"
                 />
