@@ -15,6 +15,13 @@ import {
   deleteNewsItem
 } from '@/lib/data/content';
 import {
+  getAllEvents,
+  updateEvent,
+  addEvent,
+  deleteEvent,
+  type EventItem
+} from '@/lib/supabase/events';
+import {
   getAllServices as getSupabaseServices,
   addService as addSupabaseService,
   updateService as updateSupabaseService,
@@ -66,8 +73,9 @@ interface NewsItem {
 export default function ContentManagementPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'news' | 'services' | 'team' | 'gallery' | 'trainers'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'events' | 'services' | 'team' | 'gallery' | 'trainers'>('news');
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
@@ -134,10 +142,25 @@ export default function ContentManagementPage() {
           );
         }
 
-        // Load services and team from Supabase
+        // Load services, team, and events from Supabase
         const servicesData = await getSupabaseServices();
         const teamData = await getSupabaseTeamMembers();
         const galleryData = await getAllGalleryImages();
+        
+        // Load events from API (DB-backed)
+        try {
+          const eventsRes = await fetch('/api/events', { cache: 'no-store' });
+          if (eventsRes.ok) {
+            const eventsData = await eventsRes.json();
+            setEvents(Array.isArray(eventsData) ? eventsData : []);
+          } else {
+            console.error('Failed to fetch events');
+            setEvents([]);
+          }
+        } catch (error) {
+          console.error('Error fetching events:', error);
+          setEvents([]);
+        }
         
         setServices(servicesData);
         setTeamMembers(teamData);
@@ -234,6 +257,14 @@ export default function ContentManagementPage() {
           return;
         }
         setNewsItems((prev) => prev.filter((i) => i.id !== id));
+      } else if (type === 'events') {
+        const res = await fetch(`/api/events?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const body = await res.json();
+        if (!res.ok) {
+          console.error('Failed to delete event:', body);
+          return;
+        }
+        setEvents((prev) => prev.filter((i) => i.id !== id));
       } else if (type === 'services') {
         await deleteSupabaseService(id);
         const updated = await getSupabaseServices();
@@ -289,6 +320,27 @@ export default function ContentManagementPage() {
             type: saved.type ?? 'news',
             published: !!saved.published
           } : i)));
+        }
+      } else if (newItem.type === 'events') {
+        const method = newItem.id ? 'PATCH' : 'POST';
+        const res = await fetch('/api/events', {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newItem)
+        });
+
+        const body = await res.json();
+
+        if (!res.ok) {
+          console.error(`${method} /api/events failed:`, body);
+          return;
+        }
+
+        const saved = body;
+        if (method === 'POST') {
+          setEvents((prev) => [saved, ...prev]);
+        } else {
+          setEvents((prev) => prev.map((i) => (i.id === String(saved.id) ? saved : i)));
         }
       } else if (newItem.type === 'services') {
         if (newItem.id) {
@@ -428,6 +480,90 @@ export default function ContentManagementPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleDelete(item.id, 'news')}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderEventsManagement = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Events Management</h2>
+        <Button
+          onClick={() => handleEdit({ type: 'events' }, 'events')}
+          className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+        >
+          <PlusIcon className="h-4 w-4 mr-2" />
+          Add Event
+        </Button>
+      </div>
+
+      <div className="grid gap-4">
+        {events.map((event) => (
+          <Card key={event.id} className="hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      event.category === 'training' ? 'bg-blue-100 text-blue-800' :
+                      event.category === 'workshop' ? 'bg-purple-100 text-purple-800' :
+                      event.category === 'social' ? 'bg-green-100 text-green-800' :
+                      event.category === 'competition' ? 'bg-orange-100 text-orange-800' :
+                      event.category === 'fundraiser' ? 'bg-pink-100 text-pink-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {event.category}
+                    </span>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      event.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                      event.status === 'ongoing' ? 'bg-green-100 text-green-800' :
+                      event.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {event.status}
+                    </span>
+                    <span className={`px-2 py-1 text-xs rounded-full ${event.published ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {event.published ? 'Published' : 'Draft'}
+                    </span>
+                    {event.featured && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
+                        Featured
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-2">{event.title}</h3>
+                  <p className="text-gray-600 text-sm mb-2">{event.description}</p>
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>📅 {new Date(event.event_date).toLocaleDateString()}</span>
+                    {event.start_time && <span>🕐 {event.start_time}</span>}
+                    {event.location && <span>📍 {event.location}</span>}
+                    {event.price > 0 && <span>💰 ${event.price}</span>}
+                    {event.max_participants && (
+                      <span>👥 {event.current_participants}/{event.max_participants}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2 ml-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEdit(event, 'events')}
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDelete(event.id, 'events')}
                     className="text-red-600 hover:text-red-700"
                   >
                     <TrashIcon className="h-4 w-4" />
@@ -717,7 +853,8 @@ export default function ContentManagementPage() {
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
           {[
-            { id: 'news', name: 'News & Events', icon: NewspaperIcon },
+            { id: 'news', name: 'News', icon: NewspaperIcon },
+            { id: 'events', name: 'Events', icon: CalendarIcon },
             { id: 'services', name: 'Services', icon: CogIcon },
             { id: 'team', name: 'Team', icon: UsersIcon },
             { id: 'trainers', name: 'Trainer Approvals', icon: UserPlusIcon },
@@ -740,6 +877,7 @@ export default function ContentManagementPage() {
 
       {/* Content */}
       {activeTab === 'news' && renderNewsManagement()}
+      {activeTab === 'events' && renderEventsManagement()}
       {activeTab === 'services' && renderServicesManagement()}
       {activeTab === 'team' && renderTeamManagement()}
       {activeTab === 'trainers' && renderTrainerApprovals()}

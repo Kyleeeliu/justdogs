@@ -33,6 +33,19 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     storageKey: 'sb-pajtampwqutuuidklxbv-auth-token', // Use consistent storage key with project ref
     debug: process.env.NODE_ENV === 'development',
+    // Add retry configuration for refresh token failures
+    retryAttempts: 3,
+    // Handle refresh token errors gracefully
+    onAuthStateChange: (event, session) => {
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        console.warn('Token refresh failed, clearing auth state');
+        // Clear corrupted auth state
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('sb-pajtampwqutuuidklxbv-auth-token');
+          window.location.href = '/login?message=session_expired';
+        }
+      }
+    },
   },
   global: {
     headers: {

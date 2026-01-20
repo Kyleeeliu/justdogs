@@ -240,3 +240,54 @@ export interface ConversationFormData {
   group_name?: string;
   initial_message?: string;
 }
+
+// Booking System Types
+export interface TrainerAvailability {
+  id: string;
+  trainer_id: string;
+  day_of_week: number; // 0=Sunday, 6=Saturday
+  start_time: string; // HH:MM format
+  end_time: string; // HH:MM format
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TrainerException {
+  id: string;
+  trainer_id: string;
+  exception_date: string; // YYYY-MM-DD format
+  start_time?: string; // HH:MM format, null for full day
+  end_time?: string; // HH:MM format, null for full day
+  reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AvailableSlot {
+  start_time: string; // ISO datetime
+  end_time: string; // ISO datetime
+}
+
+// Form types for booking system
+export interface TrainerAvailabilityFormData {
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
+
+export interface TrainerExceptionFormData {
+  exception_date: string;
+  start_time?: string;
+  end_time?: string;
+  reason?: string;
+}
+
+export interface BookingSlotFormData {
+  trainer_id: string;
+  date: string; // YYYY-MM-DD
+  start_time: string; // ISO datetime
+  end_time: string; // ISO datetime
+  dog_id: string;
+  special_instructions?: string;
+  location?: string;
+}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import { AuthErrorBoundary } from "@/components/AuthErrorBoundary";
 
 export const metadata: Metadata = {
   title: "Just Dogs Training App",
@@ -56,11 +57,13 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="/fonts/" />
       </head>
       <body className="min-h-screen bg-gray-50 text-base leading-relaxed">
-        <AuthProvider>
-          <div className="flex min-h-screen flex-col">
-            {children}
-          </div>
-        </AuthProvider>
+        <AuthErrorBoundary>
+          <AuthProvider>
+            <div className="flex min-h-screen flex-col">
+              {children}
+            </div>
+          </AuthProvider>
+        </AuthErrorBoundary>
       </body>
     </html>
   );

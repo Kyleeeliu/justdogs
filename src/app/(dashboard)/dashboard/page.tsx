@@ -19,8 +19,174 @@ import { useRouter } from 'next/navigation';
 import { getMessagesByUser } from '@/lib/supabase/messages';
 import { useAuth } from '@/hooks/useAuth';
 import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
-import { getDogsByOwner, getAllDogs } from '@/lib/database/dogs';
+import { getDogsByOwner, getAllDogs } from '@/lib/supabase/dogs';
 import { getUsersByRole } from '@/lib/supabase/users';
+import { authenticatedGet } from '@/lib/api/apiClient';
+
+// Component to display parent's dogs with real data
+const ParentDogsCard = ({ userId }: { userId: string }) => {
+  const [userDogs, setUserDogs] = useState<Dog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const loadUserDogs = async () => {
+      try {
+        const dogs = await getDogsByOwner(userId);
+        setUserDogs(dogs);
+      } catch (error) {
+        console.error('Error loading user dogs:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUserDogs();
+  }, [userId]);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>My Dogs</CardTitle>
+          <CardDescription>Your dogs in training</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[rgb(0_32_96)]"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>My Dogs</CardTitle>
+        <CardDescription>Your dogs in training</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {userDogs.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-gray-600 mb-4">No dogs registered yet</p>
+            <Button
+              size="sm"
+              onClick={() => router.push('/dogs')}
+              className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+            >
+              Add Your First Dog
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {userDogs.slice(0, 3).map((dog, index) => (
+              <div
+                key={dog.id}
+                className={`flex items-center justify-between p-3 rounded-lg ${
+                  index % 2 === 0 ? 'bg-[rgb(0_32_96)] bg-opacity-10' : 'bg-green-50'
+                }`}
+              >
+                <div>
+                  <p className="font-medium">{dog.name}</p>
+                  <p className="text-sm text-gray-600">{dog.breed} • {dog.age} years old</p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => router.push('/dogs')}
+                >
+                  View Profile
+                </Button>
+              </div>
+            ))}
+            {userDogs.length > 3 && (
+              <div className="text-center pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push('/dogs')}
+                >
+                  View All {userDogs.length} Dogs
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// Component to display trainer's upcoming sessions with real data
+const TrainerScheduleCard = ({ trainerStats }: { trainerStats: TrainerStats }) => {
+  const router = useRouter();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Today&apos;s Schedule</CardTitle>
+        <CardDescription>Your upcoming sessions</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!trainerStats?.upcoming_sessions || trainerStats.upcoming_sessions.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-gray-600 mb-4">No sessions scheduled for today</p>
+            <Button
+              size="sm"
+              onClick={() => router.push('/bookings')}
+              className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+            >
+              View All Bookings
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {trainerStats.upcoming_sessions.slice(0, 3).map((session, index) => (
+              <div
+                key={session.id}
+                className={`flex items-center justify-between p-3 rounded-lg ${
+                  index % 2 === 0 ? 'bg-[rgb(0_32_96)] bg-opacity-10' : 'bg-green-50'
+                }`}
+              >
+                <div>
+                  <p className="font-medium">
+                    Dog Session - {session.booking_type.replace('_', ' ')}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {new Date(session.start_time).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })} - {new Date(session.end_time).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => router.push('/bookings')}
+                >
+                  View Details
+                </Button>
+              </div>
+            ))}
+            {trainerStats.upcoming_sessions.length > 3 && (
+              <div className="text-center pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push('/bookings')}
+                >
+                  View All {trainerStats.upcoming_sessions.length} Sessions
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 export default function DashboardPage() {
   const { user } = useAuth(); // Use user from useAuth hook instead of fetching again
@@ -34,11 +200,38 @@ export default function DashboardPage() {
   const [loadingDogs, setLoadingDogs] = useState(false);
   const router = useRouter();
 
+  // Helper function to set fallback stats based on user role
+  const setFallbackStats = (userRole: string) => {
+    if (userRole === 'admin') {
+      setStats({
+        total_bookings_today: 0,
+        total_dogs: 0,
+        total_trainers: 0,
+        total_revenue_month: 0,
+        pending_bookings: 0,
+      });
+    } else if (userRole === 'trainer') {
+      setStats({
+        today_sessions: 0,
+        total_dogs_assigned: 0,
+        unread_messages: 0,
+        upcoming_sessions: [],
+      });
+    } else if (userRole === 'parent') {
+      setStats({
+        total_dogs: 0,
+        upcoming_sessions: 0,
+        unread_messages: 0,
+      });
+    }
+  };
+
   useEffect(() => {
     const loadDashboard = async () => {
       if (!user) return; // Wait for user from useAuth
       
       try {
+        setLoading(true);
         
         // Load announcements in background (non-blocking)
         getMessagesByUser(user.id)
@@ -51,7 +244,7 @@ export default function DashboardPage() {
             setAnnouncements([]);
           });
 
-          // Load dismissed announcements from localStorage
+        // Load dismissed announcements from localStorage
         try {
           const dismissed = localStorage.getItem(`dismissed_announcements_${user.id}`);
           if (dismissed) {
@@ -61,45 +254,19 @@ export default function DashboardPage() {
           console.error('Error loading dismissed announcements:', error);
         }
         
-        // Set stats immediately (non-blocking)
-        if (user.role === 'admin') {
-          setStats({
-            total_bookings_today: 12,
-            total_dogs: 45,
-            total_trainers: 8,
-            total_revenue_month: 1250000, // in cents
-            pending_bookings: 5,
-          });
-        } else if (user.role === 'trainer') {
-          setStats({
-            today_sessions: 4,
-            total_dogs_assigned: 12,
-            unread_messages: 2,
-            upcoming_sessions: [
-              {
-                id: '1',
-                dog_id: '1',
-                trainer_id: user.id,
-                parent_id: '1',
-                booking_type: 'dog_training',
-                status: 'confirmed',
-                start_time: new Date().toISOString(),
-                end_time: new Date(Date.now() + 3600000).toISOString(),
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              }
-            ],
-          });
-        } else if (user.role === 'parent') {
-          // For new dog parents, show 0 stats
-          setStats({
-            total_dogs: 0,
-            upcoming_sessions: 0,
-            unread_messages: 0,
-          });
+        // Load real stats from API with better error handling
+        try {
+          const response = await authenticatedGet('/api/dashboard-stats');
+          const statsData = await response.json();
+          setStats(statsData);
+        } catch (error) {
+          console.warn('Dashboard stats API unavailable. Using fallback data.', error);
+          setFallbackStats(user.role);
         }
       } catch (error) {
         console.error('Error loading dashboard:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -128,9 +295,9 @@ export default function DashboardPage() {
         // Load dogs
         let userDogs: Dog[] = [];
         if (user.role === 'parent') {
-          userDogs = getDogsByOwner(user.id);
+          userDogs = await getDogsByOwner(user.id);
         } else {
-          userDogs = getAllDogs();
+          userDogs = await getAllDogs();
         }
         setDogs(userDogs.map(dog => ({ id: dog.id, name: dog.name })));
 
@@ -162,7 +329,8 @@ export default function DashboardPage() {
       parentId = user.id;
     } else {
       // For admins, get the dog's owner
-      const dogDetails = getAllDogs().find(d => d.id === bookingData.dog_id);
+      const allDogs = await getAllDogs();
+      const dogDetails = allDogs.find(d => d.id === bookingData.dog_id);
       if (!dogDetails) {
         throw new Error('Dog details not found');
       }
@@ -394,31 +562,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Today&apos;s Schedule</CardTitle>
-              <CardDescription>Your upcoming sessions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-[rgb(0_32_96)] bg-opacity-10 rounded-lg">
-                  <div>
-                    <p className="font-medium">Max - Training Session</p>
-                    <p className="text-sm text-gray-600">9:00 AM - 10:00 AM</p>
-                  </div>
-                  <Button size="sm">View Details</Button>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Luna - Behavioral Session</p>
-                    <p className="text-sm text-gray-600">2:00 PM - 3:00 PM</p>
-                  </div>
-                  <Button size="sm">View Details</Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
+          <TrainerScheduleCard trainerStats={trainerStats} />
         </div>
       </div>
     );
@@ -470,31 +614,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>My Dogs</CardTitle>
-              <CardDescription>Your dogs in training</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-[rgb(0_32_96)] bg-opacity-10 rounded-lg">
-                  <div>
-                    <p className="font-medium">Max</p>
-                    <p className="text-sm text-gray-600">Golden Retriever • 2 years old</p>
-                  </div>
-                  <Button size="sm">View Profile</Button>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Luna</p>
-                    <p className="text-sm text-gray-600">Border Collie • 1 year old</p>
-                  </div>
-                  <Button size="sm">View Profile</Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
+          <ParentDogsCard userId={user.id} />
         </div>
       </div>
     );

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/client-browser';
+import { supabase } from '@/lib/supabase/client';
 import { clearAuthState, isRefreshTokenError } from '@/lib/auth/auth';
 
 class SessionManager {
@@ -73,6 +73,10 @@ class SessionManager {
         if (isRefreshTokenError(error)) {
           console.log('Invalid refresh token detected, clearing auth state');
           await clearAuthState();
+          // Redirect to login after clearing state
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login?message=session_expired';
+          }
         }
         return;
       }
@@ -98,15 +102,18 @@ class SessionManager {
         console.log('Refreshing session token...');
         
         try {
-          // Use the proper Supabase refresh method
-          const { data, error: refreshError } = await supabase.auth.refreshSession();
+          // Use the proper Supabase refresh method with retry logic
+          const { data, error: refreshError } = await this.refreshWithRetry();
           
           if (refreshError) {
-            console.error('Error refreshing session:', refreshError);
+            console.error('Error refreshing session after retries:', refreshError);
             // If refresh fails with token not found, clear auth state
             if (isRefreshTokenError(refreshError)) {
-              console.log('Refresh token invalid, clearing auth state');
+              console.log('Refresh token invalid after retries, clearing auth state');
               await clearAuthState();
+              if (typeof window !== 'undefined') {
+                window.location.href = '/login?message=session_expired';
+              }
             }
           } else {
             console.log('Session refreshed successfully');
@@ -117,13 +124,71 @@ class SessionManager {
           if (isRefreshTokenError(error)) {
             console.log('Refresh token error, clearing auth state');
             await clearAuthState();
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login?message=session_expired';
+            }
           }
         }
       }
     } catch (error) {
       console.error('Error in session check:', error);
+      // Handle any unexpected errors that might be refresh token related
+      if (isRefreshTokenError(error)) {
+        console.log('Unexpected refresh token error, clearing auth state');
+        await clearAuthState();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login?message=session_expired';
+        }
+      }
     }
   };
+
+  /**
+   * Refresh session with retry logic
+   */
+  private async refreshWithRetry(maxRetries: number = 2): Promise<{ data: any; error: any }> {
+    let lastError: any = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Session refresh attempt ${attempt}/${maxRetries}`);
+        const result = await supabase.auth.refreshSession();
+        
+        if (!result.error) {
+          console.log(`Session refresh successful on attempt ${attempt}`);
+          return result;
+        }
+        
+        lastError = result.error;
+        console.warn(`Session refresh attempt ${attempt} failed:`, result.error);
+        
+        // If it's a refresh token error, don't retry
+        if (isRefreshTokenError(result.error)) {
+          break;
+        }
+        
+        // Wait before retrying (exponential backoff)
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      } catch (error) {
+        lastError = error;
+        console.warn(`Session refresh attempt ${attempt} threw error:`, error);
+        
+        // If it's a refresh token error, don't retry
+        if (isRefreshTokenError(error)) {
+          break;
+        }
+        
+        // Wait before retrying
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+    }
+    
+    return { data: null, error: lastError };
+  }
 
   public stopSessionMonitoring() {
     if (this.refreshInterval) {
@@ -146,14 +211,17 @@ class SessionManager {
     try {
       console.log('Force refreshing session...');
       
-      const { data, error } = await supabase.auth.refreshSession();
+      const { data, error } = await this.refreshWithRetry();
       
       if (error) {
-        console.error('Error force refreshing session:', error);
+        console.error('Error force refreshing session after retries:', error);
         // If refresh fails with token not found, clear auth state
         if (isRefreshTokenError(error)) {
           console.log('Force refresh failed with invalid token, clearing auth state');
           await clearAuthState();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login?message=session_expired';
+          }
         }
         return false;
       }
@@ -166,6 +234,9 @@ class SessionManager {
       if (isRefreshTokenError(error)) {
         console.log('Force refresh exception with invalid token, clearing auth state');
         await clearAuthState();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login?message=session_expired';
+        }
       }
       return false;
     }

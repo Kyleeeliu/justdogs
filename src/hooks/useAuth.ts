@@ -3,6 +3,7 @@ import { User } from '@/types';
 import { getCurrentUser, signOut, clearAuthState, isRefreshTokenError } from '@/lib/auth/auth';
 import { supabase } from '@/lib/supabase/client';
 import { sessionManager } from '@/lib/auth/sessionManager';
+import { AuthRecovery } from '@/lib/auth/authRecovery';
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -24,10 +25,9 @@ export function useAuth() {
         if (sessionError) {
           console.error('useAuth: Error getting session during init:', sessionError);
           
-          // Handle refresh token errors by clearing state
-          if (isRefreshTokenError(sessionError)) {
-            console.log('useAuth: Invalid refresh token detected during init, clearing auth state');
-            await clearAuthState();
+          // Handle refresh token errors with recovery
+          if (await AuthRecovery.handleAuthError(sessionError, 'useAuth init')) {
+            return; // Recovery handled, will redirect
           }
           
           if (mounted) {
@@ -65,10 +65,9 @@ export function useAuth() {
       } catch (error) {
         console.error('useAuth: Error initializing auth:', error);
         
-        // Handle refresh token errors by clearing state
-        if (isRefreshTokenError(error)) {
-          console.log('useAuth: Invalid refresh token detected during init exception, clearing auth state');
-          await clearAuthState();
+        // Handle refresh token errors with recovery
+        if (await AuthRecovery.handleAuthError(error, 'useAuth init exception')) {
+          return; // Recovery handled, will redirect
         }
         
         if (mounted) {

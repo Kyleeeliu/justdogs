@@ -260,16 +260,44 @@ export async function getCurrentUser(): Promise<User | null> {
     console.log('getCurrentUser called');
     
     try {
-        // First check if we have a valid session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // First check if we have a valid session with retry logic
+        let session = null;
+        let sessionError = null;
+        
+        // Try to get session with retry for transient errors
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            const result = await supabase.auth.getSession();
+            sessionError = result.error;
+            session = result.data.session;
+            
+            if (!sessionError) {
+                break; // Success
+            }
+            
+            console.warn(`Session retrieval attempt ${attempt} failed:`, sessionError);
+            
+            // If it's a refresh token error, don't retry
+            if (isRefreshTokenError(sessionError)) {
+                break;
+            }
+            
+            // Wait before retrying for transient errors
+            if (attempt < 2) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
         
         if (sessionError) {
-            console.error('Error getting session:', sessionError);
+            console.error('Error getting session after retries:', sessionError);
             
             // Handle refresh token errors by clearing auth state
             if (isRefreshTokenError(sessionError)) {
                 console.log('Invalid refresh token detected in getCurrentUser, clearing auth state');
                 await clearAuthState();
+                // Redirect to login
+                if (typeof window !== 'undefined') {
+                    window.location.href = '/login?message=session_expired';
+                }
             }
             return null;
         }
@@ -298,6 +326,10 @@ export async function getCurrentUser(): Promise<User | null> {
         if (isRefreshTokenError(error)) {
             console.log('Invalid refresh token detected in getCurrentUser exception, clearing auth state');
             await clearAuthState();
+            // Redirect to login
+            if (typeof window !== 'undefined') {
+                window.location.href = '/login?message=session_expired';
+            }
         }
         return null;
     }
@@ -423,7 +455,12 @@ export function isRefreshTokenError(error: any): boolean {
     if (!error) return false;
     
     const message = error.message || error.toString();
+    const errorName = error.name || '';
+    
     return message.includes('refresh_token_not_found') ||
            message.includes('Invalid Refresh Token') ||
-           message.includes('AuthApiError');
+           message.includes('Refresh Token Not Found') ||
+           message.includes('AuthApiError') ||
+           errorName.includes('AuthApiError') ||
+           (error.status === 400 && message.includes('refresh'));
 }
