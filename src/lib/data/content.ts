@@ -1,6 +1,15 @@
 // Simple in-memory data store for content management
 // In a real app, this would be connected to a database
 
+export interface NewsAttachment {
+  id: string;
+  filename: string;
+  type: 'pdf' | 'jpeg';
+  url: string;
+  size: number;
+  uploaded_at: string;
+}
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -8,6 +17,7 @@ export interface NewsItem {
   date: string;
   type: 'news' | 'event' | 'announcement';
   published: boolean;
+  attachments?: NewsAttachment[];
 }
 
 export interface ServiceItem {

@@ -101,7 +101,6 @@ export function CreateBookingModal({
     const newErrors: Record<string, string> = {};
 
     if (!formData.dog_id) newErrors.dog_id = 'Please select a dog';
-    if (!formData.trainer_id) newErrors.trainer_id = 'Please select a trainer';
     if (!formData.start_time) newErrors.start_time = 'Please select a start time';
     if (!formData.end_time) newErrors.end_time = 'Please select an end time';
     if (!formData.booking_type) newErrors.booking_type = 'Please select a booking type';
@@ -238,32 +237,6 @@ export function CreateBookingModal({
                 <p className="text-amber-600 text-sm mt-1">
                   No dogs found. Please add a dog first in the Dogs section.
                 </p>
-              )}
-            </div>
-
-            {/* Trainer Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <UserIcon className="h-4 w-4 inline mr-1" />
-                Trainer *
-              </label>
-              <select
-                value={formData.trainer_id}
-                onChange={(e) => handleInputChange('trainer_id', e.target.value)}
-                disabled={submitting}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] ${
-                  errors.trainer_id ? 'border-red-500' : 'border-gray-300'
-                }`}
-              >
-                <option value="">Select a trainer</option>
-                {trainers.map(trainer => (
-                  <option key={trainer.id} value={trainer.id}>
-                    {trainer.full_name || trainer.name}
-                  </option>
-                ))}
-              </select>
-              {errors.trainer_id && (
-                <p className="text-red-500 text-sm mt-1">{errors.trainer_id}</p>
               )}
             </div>
 

@@ -9,6 +9,7 @@ import { getNewsItems, NewsItem } from '@/lib/data/content';
 export default function NewsPage() {
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const loadNews = async () => {
@@ -51,6 +52,20 @@ export default function NewsPage() {
     }
   };
 
+  const toggleExpand = (itemId: string) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  };
+
+  const isExpanded = (itemId: string) => expandedItems.has(itemId);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -72,7 +87,7 @@ export default function NewsPage() {
               <img
                 src="/images/icons/logo.gif"
                 alt="Just Dogs Logo"
-                className="w-8 h-8 mr-3"
+                className="w-[1.6rem] h-8 mr-3"
               />
               <span className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</span>
             </Link>
@@ -102,91 +117,142 @@ export default function NewsPage() {
           </p>
         </div>
 
-        {/* News & Events Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-          {/* Latest News */}
-          <Card className="hover:shadow-xl transition-all duration-300 hover:-translate-y-2">
-            <CardHeader>
-              <CardTitle className="text-2xl text-[rgb(0_32_96)] flex items-center">
-                📰 Latest News
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {newsItems
-                .filter(item => item.type === 'news')
-                .slice(0, 3)
-                .map((item) => (
-                  <div key={item.id} className="border-l-4 border-[rgb(0_32_96)] pl-4">
-                    <h3 className="font-semibold text-gray-900 mb-2">{item.title}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{formatDate(item.date)}</p>
-                    <p className="text-gray-700 text-sm">{item.content}</p>
+        {/* All News Items - Expandable */}
+        <div className="space-y-4 mb-12">
+          {newsItems.map((item) => {
+            const expanded = isExpanded(item.id);
+            const hasAttachments = item.attachments && item.attachments.length > 0;
+            
+            return (
+              <Card 
+                key={item.id} 
+                className="hover:shadow-lg transition-all duration-300 overflow-hidden"
+              >
+                <CardContent className="p-0">
+                  {/* Collapsed Header */}
+                  <div 
+                    className="p-6 cursor-pointer"
+                    onClick={() => toggleExpand(item.id)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(item.type)}`}>
+                            {item.type}
+                          </span>
+                          <span className="text-sm text-gray-500">{formatDate(item.date)}</span>
+                          {hasAttachments && (
+                            <span className="text-xs text-blue-600">
+                              📎 {item.attachments!.length} attachment{item.attachments!.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-semibold text-gray-900 mb-2 text-lg">{item.title}</h3>
+                        <p className={`text-gray-700 text-sm transition-all duration-300 ${
+                          expanded ? 'line-clamp-none' : 'line-clamp-2'
+                        }`}>
+                          {item.content}
+                        </p>
                   </div>
-                ))}
-            </CardContent>
-          </Card>
-
-          {/* Upcoming Events */}
-          <Card className="hover:shadow-xl transition-all duration-300 hover:-translate-y-2">
-            <CardHeader>
-              <CardTitle className="text-2xl text-[rgb(0_32_96)] flex items-center">
-                📅 Upcoming Events
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {newsItems
-                .filter(item => item.type === 'event')
-                .slice(0, 3)
-                .map((item) => (
-                  <div key={item.id} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-[rgb(0_32_96)] mb-2">{item.title}</h3>
-                    <p className="text-sm text-[rgb(0_32_96)] font-medium mb-2">{formatDate(item.date)}</p>
-                    <p className="text-gray-800 text-sm mb-3">{item.content}</p>
-                    <Button
-                      size="sm"
-                      className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white w-full sm:w-auto"
-                      onClick={() => window.open('https://justdogs.co.za', '_blank')}
-                    >
-                      Register Now
-                    </Button>
+                      <div className="ml-4 flex-shrink-0">
+                        <button
+                          className="text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)] transition-transform duration-300"
+                          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                        >
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
                   </div>
-                ))}
-            </CardContent>
-          </Card>
+                    </div>
         </div>
 
-        {/* Special Announcements */}
-        {newsItems.filter(item => item.type === 'announcement').length > 0 && (
-          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
-            <h2 className="text-3xl font-bold text-[rgb(0_32_96)] mb-6 text-center">
-              🎉 Special Announcements
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {newsItems
-                .filter(item => item.type === 'announcement')
-                .slice(0, 2)
-                .map((item, index) => (
-                  <div
-                    key={item.id}
-                    className={`text-center p-6 rounded-xl ${
-                      index === 0
-                        ? 'announcement-card'
-                        : 'bg-light-readable'
+                  {/* Expanded Content */}
+                  <div 
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                      expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
                     }`}
                   >
-                    <h3 className="text-xl font-bold mb-3 text-contrast-high">{item.title}</h3>
-                    <p className="mb-4 text-contrast-high">{item.content}</p>
-                    <Button
-                      variant="outline"
-                      className="border-white text-white hover:bg-white hover:text-gray-900 font-medium"
-                      onClick={() => window.open('https://justdogs.co.za', '_blank')}
-                    >
-                      {index === 0 ? 'Claim Offer' : 'Learn More'}
-                    </Button>
+                    <div className="px-6 pb-6 border-t border-gray-100 pt-4">
+                      <p className="text-gray-700 mb-4 whitespace-pre-wrap">{item.content}</p>
+                      
+                      {/* Attachments */}
+                      {hasAttachments && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <h4 className="font-medium text-gray-900 mb-3">Attachments</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {item.attachments!.map((attachment, idx) => (
+                              <div key={attachment.id || idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                {attachment.type === 'jpeg' ? (
+                                  <>
+                                    <img 
+                                      src={attachment.url} 
+                                      alt={attachment.filename}
+                                      className="w-16 h-16 object-cover rounded"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-gray-900 truncate">{attachment.filename}</p>
+                                      <p className="text-xs text-gray-500">{(attachment.size / 1024 / 1024).toFixed(2)} MB</p>
+                                      <a
+                                        href={attachment.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                                      >
+                                        View Full Size
+                                      </a>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="w-16 h-16 bg-red-100 rounded flex items-center justify-center flex-shrink-0">
+                                      <span className="text-2xl">📄</span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-gray-900 truncate">{attachment.filename}</p>
+                                      <p className="text-xs text-gray-500">{(attachment.size / 1024 / 1024).toFixed(2)} MB</p>
+                                      <a
+                                        href={attachment.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        download
+                                        className="text-xs text-blue-600 hover:underline mt-1 inline-block"
+                                      >
+                                        Download PDF
+                                      </a>
+                                    </div>
+                                  </>
+                                )}
                   </div>
                 ))}
             </div>
           </div>
         )}
+                      
+                      {item.type === 'event' && (
+                        <div className="mt-4">
+                          <Button
+                            size="sm"
+                            className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open('https://justdogs.co.za', '_blank');
+                            }}
+                          >
+                            Register Now
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
 
         {/* Call to Action */}
         <div className="text-center bg-white rounded-2xl p-8 shadow-lg">
@@ -201,14 +267,14 @@ export default function NewsPage() {
             <Button 
               size="lg" 
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg rounded-xl"
-              onClick={() => window.open('https://facebook.com/justdogs', '_blank')}
+              onClick={() => window.open('https://www.facebook.com/justdogsbehaviour/', '_blank')}
             >
               📘 Follow on Facebook
             </Button>
             <Button 
               size="lg" 
               className="bg-pink-600 hover:bg-pink-700 text-white px-8 py-4 text-lg rounded-xl"
-              onClick={() => window.open('https://instagram.com/justdogs', '_blank')}
+              onClick={() => window.open('https://www.instagram.com/justdogsbehaviour/?hl=en', '_blank')}
             >
               📷 Follow on Instagram
             </Button>

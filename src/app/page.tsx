@@ -15,6 +15,8 @@ export default function HomePage() {
         />
         {/* Dark overlay for text readability */}
         <div className="absolute inset-0 bg-black/40"></div>
+        {/* White overlay to make background paler */}
+        <div className="absolute inset-0 bg-white/30"></div>
         {/* Subtle gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-br from-[rgb(0_32_96)]/20 via-transparent to-[rgb(0_32_96)]/30"></div>
       </div>
@@ -26,7 +28,7 @@ export default function HomePage() {
         <img
           src="/images/icons/logo.gif"
           alt="Just Dogs Logo"
-          className="w-20 h-20 mx-auto mb-4"
+          className="w-16 h-20 mx-auto mb-4"
         />
         <h1 className="text-4xl font-bold text-white text-center drop-shadow-lg">
           Just Dogs

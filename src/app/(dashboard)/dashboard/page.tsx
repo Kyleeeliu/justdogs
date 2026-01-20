@@ -89,7 +89,7 @@ const ParentDogsCard = ({ userId }: { userId: string }) => {
               >
                 <div>
                   <p className="font-medium">{dog.name}</p>
-                  <p className="text-sm text-gray-600">{dog.breed} • {dog.age} years old</p>
+                  <p className="text-sm text-gray-600">{dog.breed}</p>
                 </div>
                 <Button
                   size="sm"

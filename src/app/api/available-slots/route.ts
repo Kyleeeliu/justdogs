@@ -24,9 +24,9 @@ export async function GET(request: NextRequest) {
     const durationMinutes = parseInt(searchParams.get('duration_minutes') || '60');
 
     // Validate required parameters
-    if (!trainerId || !date) {
+    if (!date) {
       return NextResponse.json(
-        { error: 'Missing required parameters: trainer_id, date' },
+        { error: 'Missing required parameter: date' },
         { status: 400 }
       );
     }
@@ -48,28 +48,41 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify trainer exists and is actually a trainer
-    const { data: trainer, error: trainerError } = await supabase
-      .from('users')
-      .select('id, role')
-      .eq('id', trainerId)
-      .eq('role', 'trainer')
-      .single();
+    // If trainer_id is provided, verify trainer exists and is actually a trainer
+    if (trainerId) {
+      const { data: trainer, error: trainerError } = await supabase
+        .from('users')
+        .select('id, role')
+        .eq('id', trainerId)
+        .eq('role', 'trainer')
+        .single();
 
-    if (trainerError || !trainer) {
-      return NextResponse.json(
-        { error: 'Trainer not found or user is not a trainer' },
-        { status: 404 }
-      );
+      if (trainerError || !trainer) {
+        return NextResponse.json(
+          { error: 'Trainer not found or user is not a trainer' },
+          { status: 404 }
+        );
+      }
     }
 
     // Call the database function to get available slots
-    const { data: slots, error: slotsError } = await supabase
-      .rpc('get_available_slots', {
-        p_trainer_id: trainerId,
-        p_date: date,
-        p_slot_duration_minutes: durationMinutes
-      });
+    // If no trainer_id, we'll need to get slots from all trainers or handle differently
+    // For now, if no trainer_id, return empty array (admin will assign trainer later)
+    let slots, slotsError;
+    if (trainerId) {
+      const result = await supabase
+        .rpc('get_available_slots', {
+          p_trainer_id: trainerId,
+          p_date: date,
+          p_slot_duration_minutes: durationMinutes
+        });
+      slots = result.data;
+      slotsError = result.error;
+    } else {
+      // No trainer specified - return empty slots (admin will assign trainer)
+      slots = [];
+      slotsError = null;
+    }
 
     if (slotsError) {
       console.error('Error fetching available slots:', slotsError);

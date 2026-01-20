@@ -21,14 +21,13 @@ interface BookingSlotSelectorProps {
 }
 
 export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComplete }: BookingSlotSelectorProps) {
-  const [selectedTrainer, setSelectedTrainer] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedDog, setSelectedDog] = useState<string>('');
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState(false);
-  const [step, setStep] = useState<'trainer' | 'date' | 'dog' | 'slots' | 'confirm'>('trainer');
+  const [step, setStep] = useState<'date' | 'dog' | 'slots' | 'confirm'>('date');
   const [bookingDetails, setBookingDetails] = useState({
     special_instructions: '',
     location: 'Just Dogs Training Center'
@@ -38,12 +37,12 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
   // Get minimum date (today)
   const minDate = new Date().toISOString().split('T')[0];
 
-  // Load available slots when trainer and date are selected
+  // Load available slots when date is selected
   useEffect(() => {
-    if (selectedTrainer && selectedDate) {
+    if (selectedDate) {
       loadAvailableSlots();
     }
-  }, [selectedTrainer, selectedDate]);
+  }, [selectedDate]);
 
   const loadAvailableSlots = async () => {
     try {
@@ -51,7 +50,7 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
       setAvailableSlots([]);
       
       const response = await fetch(
-        `/api/available-slots?trainer_id=${selectedTrainer}&date=${selectedDate}&duration_minutes=60`
+        `/api/available-slots?date=${selectedDate}&duration_minutes=60`
       );
       
       if (response.ok) {
@@ -66,14 +65,6 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleTrainerSelect = (trainerId: string) => {
-    setSelectedTrainer(trainerId);
-    setSelectedSlot(null);
-    setAvailableSlots([]);
-    setStep('date');
-    setErrors({});
   };
 
   const handleDateSelect = (date: string) => {
@@ -96,7 +87,7 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
   };
 
   const handleBooking = async () => {
-    if (!selectedSlot || !selectedTrainer || !selectedDog) {
+    if (!selectedSlot || !selectedDog) {
       setErrors({ booking: 'Please complete all selections' });
       return;
     }
@@ -106,7 +97,6 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
       setErrors({});
 
       const bookingData: BookingSlotFormData = {
-        trainer_id: selectedTrainer,
         dog_id: selectedDog,
         date: selectedDate,
         start_time: selectedSlot.start_time,
@@ -163,10 +153,6 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
     })}`;
   };
 
-  const getSelectedTrainerName = () => {
-    return trainers.find(t => t.id === selectedTrainer)?.full_name || '';
-  };
-
   const getSelectedDogName = () => {
     return dogs.find(d => d.id === selectedDog)?.name || '';
   };
@@ -198,7 +184,7 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Book a Training Session</h2>
-        <p className="text-gray-600">Select a trainer, date, and time for your dog's training session</p>
+        <p className="text-gray-600">Select a date and time for your dog's training session</p>
       </div>
 
       {/* Progress Steps */}
@@ -240,52 +226,13 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
         })}
       </div>
 
-      {/* Step 1: Select Trainer */}
-      {step === 'trainer' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Select a Trainer</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {trainers.map(trainer => (
-                <div
-                  key={trainer.id}
-                  onClick={() => handleTrainerSelect(trainer.id)}
-                  className="p-4 border rounded-lg cursor-pointer hover:border-[rgb(0_32_96)] hover:bg-blue-50 transition-colors"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-[rgb(0_32_96)] rounded-full flex items-center justify-center text-white font-semibold">
-                      {trainer.full_name.charAt(0)}
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-gray-900">{trainer.full_name}</h3>
-                      <p className="text-sm text-gray-600">Professional Dog Trainer</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 2: Select Date */}
+      {/* Step 1: Select Date */}
       {step === 'date' && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader>
             <CardTitle>Select Date</CardTitle>
-            <Button variant="outline" onClick={() => resetToStep('trainer')}>
-              <XMarkIcon className="h-4 w-4 mr-2" />
-              Change Trainer
-            </Button>
           </CardHeader>
           <CardContent>
-            <div className="mb-4">
-              <p className="text-sm text-gray-600">
-                Selected trainer: <span className="font-medium">{getSelectedTrainerName()}</span>
-              </p>
-            </div>
             <div className="max-w-md">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Choose a date
@@ -302,7 +249,7 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
         </Card>
       )}
 
-      {/* Step 3: Select Dog */}
+      {/* Step 2: Select Dog */}
       {step === 'dog' && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -315,7 +262,6 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
           <CardContent>
             <div className="mb-4">
               <p className="text-sm text-gray-600">
-                Trainer: <span className="font-medium">{getSelectedTrainerName()}</span> • 
                 Date: <span className="font-medium">{new Date(selectedDate).toLocaleDateString()}</span>
               </p>
             </div>
@@ -332,7 +278,7 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
                     </div>
                     <div>
                       <h3 className="font-medium text-gray-900">{dog.name}</h3>
-                      <p className="text-sm text-gray-600">{dog.breed} • {dog.age} years old</p>
+                      <p className="text-sm text-gray-600">{dog.breed}</p>
                     </div>
                   </div>
                 </div>
@@ -355,7 +301,6 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
           <CardContent>
             <div className="mb-4">
               <p className="text-sm text-gray-600">
-                Trainer: <span className="font-medium">{getSelectedTrainerName()}</span> • 
                 Date: <span className="font-medium">{new Date(selectedDate).toLocaleDateString()}</span> • 
                 Dog: <span className="font-medium">{getSelectedDogName()}</span>
               </p>
@@ -377,7 +322,7 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
               <div className="text-center py-8">
                 <ClockIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No available slots</h3>
-                <p className="text-gray-600">This trainer has no available time slots on the selected date.</p>
+                <p className="text-gray-600">No available time slots on the selected date.</p>
                 <Button 
                   onClick={() => resetToStep('date')} 
                   className="mt-4"
@@ -421,10 +366,6 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-medium text-gray-900 mb-3">Booking Summary</h3>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Trainer:</span>
-                    <span className="font-medium">{getSelectedTrainerName()}</span>
-                  </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Dog:</span>
                     <span className="font-medium">{getSelectedDogName()}</span>
@@ -481,7 +422,7 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
               <div className="flex justify-end space-x-3">
                 <Button
                   variant="outline"
-                  onClick={() => resetToStep('trainer')}
+                  onClick={() => resetToStep('date')}
                 >
                   Start Over
                 </Button>

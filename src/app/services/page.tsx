@@ -30,7 +30,7 @@ export default function ServicesPage() {
               <img
                 src="/images/icons/logo.gif"
                 alt="Just Dogs Logo"
-                className="w-8 h-8 mr-3"
+                className="w-[1.6rem] h-8 mr-3"
               />
               <span className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</span>
             </Link>
@@ -83,7 +83,7 @@ export default function ServicesPage() {
                   Book This Service
                 </Button>
                 <Link 
-                  href="https://justdogs.co.za" 
+                  href="https://justdogs.co.za/behaviour-and-home" 
                   target="_blank" 
                   className="text-sm text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)] hover:underline block text-center"
                 >
@@ -113,7 +113,7 @@ export default function ServicesPage() {
                   Book This Service
                 </Button>
                 <Link 
-                  href="https://justdogs.co.za" 
+                  href="https://justdogs.co.za/the-farm" 
                   target="_blank" 
                   className="text-sm text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)] hover:underline block text-center"
                 >
@@ -143,7 +143,7 @@ export default function ServicesPage() {
                   Book This Service
                 </Button>
                 <Link 
-                  href="https://justdogs.co.za" 
+                  href="https://justdogs.co.za/training-academy" 
                   target="_blank" 
                   className="text-sm text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)] hover:underline block text-center"
                 >
@@ -173,7 +173,7 @@ export default function ServicesPage() {
                   Book This Service
                 </Button>
                 <Link 
-                  href="https://justdogs.co.za" 
+                  href="https://justdogs.co.za/jdesd" 
                   target="_blank" 
                   className="text-sm text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)] hover:underline block text-center"
                 >

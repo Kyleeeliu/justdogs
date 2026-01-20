@@ -1,5 +1,14 @@
 import { supabase } from './client';
 
+export interface NewsAttachment {
+  id: string;
+  filename: string;
+  type: 'pdf' | 'jpeg';
+  url: string;
+  size: number;
+  uploaded_at: string;
+}
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -7,6 +16,7 @@ export interface NewsItem {
   date: string;
   type: 'news' | 'event' | 'announcement';
   published: boolean;
+  attachments?: NewsAttachment[];
   created_at?: string;
   updated_at?: string;
 }
@@ -34,6 +44,7 @@ export const getNewsItems = async (): Promise<NewsItem[]> => {
       date: item.date,
       type: item.type,
       published: item.published,
+      attachments: item.attachments || [],
       created_at: item.created_at,
       updated_at: item.updated_at,
     }));
@@ -63,6 +74,7 @@ export const getAllNewsItems = async (): Promise<NewsItem[]> => {
       date: item.date,
       type: item.type,
       published: item.published,
+      attachments: item.attachments || [],
       created_at: item.created_at,
       updated_at: item.updated_at,
     }));
@@ -83,6 +95,7 @@ export const addNewsItem = async (item: Omit<NewsItem, 'id' | 'created_at' | 'up
         date: item.date,
         type: item.type,
         published: item.published !== undefined ? item.published : true,
+        attachments: item.attachments || [],
       }])
       .select()
       .single();
@@ -99,6 +112,7 @@ export const addNewsItem = async (item: Omit<NewsItem, 'id' | 'created_at' | 'up
       date: data.date,
       type: data.type,
       published: data.published,
+      attachments: data.attachments || [],
       created_at: data.created_at,
       updated_at: data.updated_at,
     };
@@ -117,6 +131,7 @@ export const updateNewsItem = async (id: string, updates: Partial<NewsItem>): Pr
     if (updates.date !== undefined) updateData.date = updates.date;
     if (updates.type !== undefined) updateData.type = updates.type;
     if (updates.published !== undefined) updateData.published = updates.published;
+    if (updates.attachments !== undefined) updateData.attachments = updates.attachments;
 
     const { data, error } = await supabase
       .from(NEWS_TABLE)
@@ -139,6 +154,7 @@ export const updateNewsItem = async (id: string, updates: Partial<NewsItem>): Pr
       date: data.date,
       type: data.type,
       published: data.published,
+      attachments: data.attachments || [],
       created_at: data.created_at,
       updated_at: data.updated_at,
     };
@@ -151,6 +167,24 @@ export const updateNewsItem = async (id: string, updates: Partial<NewsItem>): Pr
 // Delete a news item
 export const deleteNewsItem = async (id: string): Promise<boolean> => {
   try {
+    // First, get the item to delete its attachments from storage
+    const { data: item } = await supabase
+      .from(NEWS_TABLE)
+      .select('attachments')
+      .eq('id', id)
+      .single();
+
+    // Delete attachments from storage if they exist
+    if (item?.attachments && Array.isArray(item.attachments)) {
+      const storageModule = await import('./storage');
+      for (const attachment of item.attachments) {
+        if (attachment.url && storageModule.deleteNewsAttachment) {
+          await storageModule.deleteNewsAttachment(attachment.url);
+        }
+      }
+    }
+
+    // Delete the news item
     const { error } = await supabase
       .from(NEWS_TABLE)
       .delete()

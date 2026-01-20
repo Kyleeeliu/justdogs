@@ -15,7 +15,7 @@ export default function TeamPage() {
               <img
                 src="/images/icons/logo.gif"
                 alt="Just Dogs Logo"
-                className="w-8 h-8 mr-3"
+                className="w-[1.6rem] h-8 mr-3"
               />
               <span className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</span>
             </Link>

@@ -43,7 +43,11 @@ import {
   uploadGalleryImage,
   replaceGalleryImage,
   deleteGalleryImage as deleteStorageImage,
-  initializeGalleryBucket
+  initializeGalleryBucket,
+  uploadNewsAttachment,
+  deleteNewsAttachment,
+  initializeNewsAttachmentsBucket,
+  type NewsAttachment
 } from '@/lib/supabase/storage';
 import {
   PlusIcon,
@@ -116,8 +120,9 @@ export default function ContentManagementPage() {
     if (user?.role !== 'admin') return;
     const loadData = async () => {
       try {
-        // Initialize Supabase Storage bucket
+        // Initialize Supabase Storage buckets
         await initializeGalleryBucket();
+        await initializeNewsAttachmentsBucket();
 
         // Fetch news from API (DB-backed)
         const res = await fetch('/api/news', { cache: 'no-store' });
@@ -294,17 +299,73 @@ export default function ContentManagementPage() {
   async function handleSave(newItem: any) {
     try {
       if (newItem.type === 'news') {
+        // Handle attachment uploads
+        let attachments: NewsAttachment[] = newItem.attachments || [];
+        
+        // For new items, create the item first to get an ID, then upload attachments
+        // For existing items, upload attachments first, then update
         const method = newItem.id ? 'PATCH' : 'POST';
+        let savedItemId = newItem.id;
+        
+        // If creating new item, create it first without attachments
+        if (method === 'POST') {
+          const createRes = await fetch('/api/news', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...newItem,
+              attachments: [],
+              attachmentFiles: undefined,
+              deletedAttachmentUrls: undefined
+            })
+          });
+          
+          const createBody = await createRes.json();
+          if (!createRes.ok) {
+            console.error('POST /api/news failed:', createBody);
+            return;
+          }
+          savedItemId = createBody.id;
+        }
+        
+        // Upload new attachment files (now we have an ID)
+        if (newItem.attachmentFiles && newItem.attachmentFiles.length > 0 && savedItemId) {
+          const uploadPromises = newItem.attachmentFiles.map((file: File) => 
+            uploadNewsAttachment(file, savedItemId)
+          );
+          const uploadResults = await Promise.all(uploadPromises);
+          
+          const newAttachments = uploadResults
+            .filter(result => result.success && result.attachment)
+            .map(result => result.attachment!);
+          
+          attachments = [...attachments, ...newAttachments];
+        }
+
+        // Remove deleted attachments from storage
+        if (newItem.deletedAttachmentUrls && newItem.deletedAttachmentUrls.length > 0) {
+          await Promise.all(
+            newItem.deletedAttachmentUrls.map((url: string) => deleteNewsAttachment(url))
+          );
+          attachments = attachments.filter(att => !newItem.deletedAttachmentUrls.includes(att.url));
+        }
+
+        // Update the item with final attachments (for both new and existing items)
         const res = await fetch('/api/news', {
-          method,
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newItem)
+          body: JSON.stringify({
+            id: savedItemId,
+            attachments,
+            attachmentFiles: undefined,
+            deletedAttachmentUrls: undefined
+          })
         });
 
         const body = await res.json();
 
         if (!res.ok) {
-          console.error(`${method} /api/news failed:`, body);
+          console.error('PATCH /api/news failed:', body);
           return;
         }
 
@@ -318,7 +379,8 @@ export default function ContentManagementPage() {
             content: saved.content ?? '',
             date: saved.date ? (typeof saved.date === 'string' ? saved.date : new Date(saved.date).toISOString().split('T')[0]) : '',
             type: saved.type ?? 'news',
-            published: !!saved.published
+            published: !!saved.published,
+            attachments: saved.attachments || []
           } : i)));
         }
       } else if (newItem.type === 'events') {
@@ -467,6 +529,11 @@ export default function ContentManagementPage() {
                   <h3 className="font-semibold text-gray-900 mb-2">{item.title}</h3>
                   <p className="text-gray-600 text-sm mb-2">{item.content}</p>
                   <p className="text-xs text-gray-500">{item.date}</p>
+                  {item.attachments && item.attachments.length > 0 && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      📎 {item.attachments.length} attachment{item.attachments.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2 ml-4">
                   <Button
@@ -932,6 +999,9 @@ function ContentForm({ item, onSave, onCancel }: { item: any; onSave: (data: any
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(item?.image_url || null);
   const [uploading, setUploading] = useState(false);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<NewsAttachment[]>(item?.attachments || []);
+  const [deletedAttachmentUrls, setDeletedAttachmentUrls] = useState<string[]>([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -971,7 +1041,10 @@ function ContentForm({ item, onSave, onCancel }: { item: any; onSave: (data: any
       onSave({
         ...formData,
         id: item?.id,
-        imageFile: selectedFile // Pass the file to handleSave
+        imageFile: selectedFile, // Pass the file to handleSave
+        attachments: attachments,
+        attachmentFiles: attachmentFiles.length > 0 ? attachmentFiles : undefined,
+        deletedAttachmentUrls: deletedAttachmentUrls.length > 0 ? deletedAttachmentUrls : undefined
       });
     } finally {
       setUploading(false);
@@ -1031,6 +1104,108 @@ function ContentForm({ item, onSave, onCancel }: { item: any; onSave: (data: any
               className="mr-2"
             />
             <label htmlFor="published" className="text-sm text-gray-700">Published</label>
+          </div>
+          
+          {/* Attachments Section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Attachments (PDF or JPEG, max 10MB each)</label>
+            
+            {/* Existing Attachments */}
+            {attachments.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {attachments.map((attachment, index) => (
+                  <div key={attachment.id || index} className="flex items-center justify-between p-2 bg-gray-50 rounded border">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">
+                        {attachment.type === 'pdf' ? '📄' : '🖼️'}
+                      </span>
+                      <span className="text-sm text-gray-700">{attachment.filename}</span>
+                      <span className="text-xs text-gray-500">
+                        ({(attachment.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setAttachments(prev => prev.filter((_, i) => i !== index));
+                        if (attachment.url) {
+                          setDeletedAttachmentUrls(prev => [...prev, attachment.url]);
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* File Upload */}
+            <div className="flex items-center justify-center w-full">
+              <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                <div className="flex flex-col items-center justify-center pt-3 pb-4">
+                  <CloudArrowUpIcon className="w-6 h-6 mb-2 text-gray-500" />
+                  <p className="mb-1 text-sm text-gray-500">
+                    <span className="font-semibold">Click to upload</span> PDF or JPEG
+                  </p>
+                  <p className="text-xs text-gray-500">Max 10MB per file</p>
+                </div>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    // Validate files
+                    const validFiles: File[] = [];
+                    for (const file of files) {
+                      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                      const isJpeg = file.type === 'image/jpeg' || file.type === 'image/jpg' || 
+                                   file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg');
+                      
+                      if (!isPdf && !isJpeg) {
+                        alert(`${file.name} is not a PDF or JPEG file. Skipping.`);
+                        continue;
+                      }
+                      
+                      if (file.size > 10 * 1024 * 1024) {
+                        alert(`${file.name} is larger than 10MB. Skipping.`);
+                        continue;
+                      }
+                      
+                      validFiles.push(file);
+                    }
+                    setAttachmentFiles(prev => [...prev, ...validFiles]);
+                  }}
+                />
+              </label>
+            </div>
+            
+            {/* Selected Files Preview */}
+            {attachmentFiles.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {attachmentFiles.map((file, index) => (
+                  <div key={index} className="text-sm text-gray-600 flex items-center justify-between p-2 bg-blue-50 rounded">
+                    <span>
+                      {file.type === 'application/pdf' ? '📄' : '🖼️'} {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAttachmentFiles(prev => prev.filter((_, i) => i !== index))}
+                      className="text-red-600 hover:text-red-700 h-6 px-2"
+                    >
+                      <XMarkIcon className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}

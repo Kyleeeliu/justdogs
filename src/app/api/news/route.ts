@@ -20,7 +20,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { title, content, date, type, published } = body;
+    const { title, content, date, type, published, attachments } = body;
 
     if (!title || !content || !type) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     const supabase = createServiceRoleClient();
     const { data, error } = await supabase
       .from('news_items')
-      .insert({ title, content, date, type, published })
+      .insert({ title, content, date, type, published, attachments: attachments || [] })
       .select()
       .single();
 
@@ -44,16 +44,24 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, title, content, date, type, published } = body;
+    const { id, title, content, date, type, published, attachments } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 });
     }
 
+    const updateData: any = {};
+    if (title !== undefined) updateData.title = title;
+    if (content !== undefined) updateData.content = content;
+    if (date !== undefined) updateData.date = date;
+    if (type !== undefined) updateData.type = type;
+    if (published !== undefined) updateData.published = published;
+    if (attachments !== undefined) updateData.attachments = attachments;
+
     const supabase = createServiceRoleClient();
     const { data, error } = await supabase
       .from('news_items')
-      .update({ title, content, date, type, published })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();

@@ -60,7 +60,7 @@ export default function GalleryPage() {
               <img
                 src="/images/icons/logo.gif"
                 alt="Just Dogs Logo"
-                className="w-8 h-8 mr-3"
+                className="w-[1.6rem] h-8 mr-3"
               />
               <span className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</span>
             </Link>
@@ -139,14 +139,14 @@ export default function GalleryPage() {
             <Button 
               size="lg" 
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg rounded-xl"
-              onClick={() => window.open('https://facebook.com/justdogs', '_blank')}
+              onClick={() => window.open('https://www.facebook.com/justdogsbehaviour/', '_blank')}
             >
               📘 Facebook
             </Button>
             <Button 
               size="lg" 
               className="bg-pink-600 hover:bg-pink-700 text-white px-8 py-4 text-lg rounded-xl"
-              onClick={() => window.open('https://instagram.com/justdogs', '_blank')}
+              onClick={() => window.open('https://www.instagram.com/justdogsbehaviour/?hl=en', '_blank')}
             >
               📷 Instagram
             </Button>

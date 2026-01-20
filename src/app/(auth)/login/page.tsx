@@ -145,7 +145,7 @@ export default function LoginPage() {
         <img
           src="/images/icons/logo.gif"
           alt="Just Dogs Logo"
-          className="w-20 h-20 mx-auto mb-4"
+          className="w-16 h-20 mx-auto mb-4"
         />
         <h1 className="text-3xl font-bold text-[rgb(0_32_96)] text-center">
           Just Dogs

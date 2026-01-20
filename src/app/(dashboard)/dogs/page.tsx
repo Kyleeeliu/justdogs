@@ -365,20 +365,6 @@ export default function DogsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Age</CardTitle>
-            <HeartIcon className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {dogs.length > 0 ? Math.round(dogs.reduce((sum, dog) => sum + dog.age, 0) / dogs.length) : 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Years old
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Dogs Grid */}
@@ -401,7 +387,6 @@ export default function DogsPage() {
             <CardContent className="space-y-3">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <span className="font-medium">Age:</span> {dog.age} years
                 </div>
                 <div>
                   <span className="font-medium">Weight:</span> {dog.weight}kg
@@ -519,7 +504,6 @@ export default function DogsPage() {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Age</p>
-                    <p className="font-medium">{selectedDog.age} years</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Weight</p>
