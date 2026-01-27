@@ -1,16 +1,222 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllDogs, getDogsByOwner, createDog } from '@/lib/supabase/dogs';
-import { getServerUser } from '@/lib/supabase/server';
+import { updateDog } from '@/lib/supabase/dogs';
+import { getServerUser, createSupabaseServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
+import { Dog } from '@/types';
+
+// Server-side functions for fetching dogs (use server client instead of client-side functions)
+async function getAllDogsServer(supabase: any): Promise<Dog[]> {
+  const { data, error } = await supabase
+    .from('dogs')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching all dogs:', error);
+    throw error;
+  }
+
+  return (data ?? []) as Dog[];
+}
+
+async function getDogsByOwnerServer(supabase: any, ownerId: string): Promise<Dog[]> {
+  const { data, error } = await supabase
+    .from('dogs')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching dogs by owner:', error);
+    throw error;
+  }
+
+  return (data ?? []) as Dog[];
+}
+
+// Server-side function for creating dogs
+async function createDogServer(
+  supabase: any,
+  dogData: {
+    name: string;
+    breed: string;
+    age: number;
+    weight: number | null;
+    medical_notes: string | null;
+    behavioral_notes: string | null;
+    owner_id: string;
+  }
+): Promise<Dog> {
+  console.log('createDogServer: Inserting dog data:', dogData);
+  
+  const { data, error } = await supabase
+    .from('dogs')
+    .insert({
+      name: dogData.name,
+      breed: dogData.breed,
+      age: dogData.age,
+      weight: dogData.weight,
+      medical_notes: dogData.medical_notes,
+      behavioral_notes: dogData.behavioral_notes,
+      owner_id: dogData.owner_id,
+      // Let database handle created_at and updated_at with defaults
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating dog in database:', error);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    console.error('Error details:', error.details);
+    console.error('Error hint:', error.hint);
+    console.error('Full error object:', JSON.stringify(error, null, 2));
+    
+    // Create a more detailed error message
+    let errorMsg = `Database error: ${error.message}`;
+    if (error.details) {
+      errorMsg += `\nDetails: ${error.details}`;
+    }
+    if (error.hint) {
+      errorMsg += `\nHint: ${error.hint}`;
+    }
+    if (error.code) {
+      errorMsg += `\nCode: ${error.code}`;
+    }
+    
+    const dbError = new Error(errorMsg);
+    (dbError as any).code = error.code;
+    (dbError as any).details = error.details;
+    (dbError as any).hint = error.hint;
+    throw dbError;
+  }
+
+  if (!data) {
+    throw new Error('Dog was created but no data returned');
+  }
+
+  console.log('Dog created successfully:', data.id);
+  return data as Dog;
+}
+
+// Helper function to get or create user profile
+async function getOrCreateUserProfile(authUser: any, supabase: any) {
+  // First try to get existing profile
+  const { data: userProfile, error: profileError } = await supabase
+    .from('users')
+    .select('id, role, full_name, email')
+    .eq('id', authUser.id)
+    .single();
+
+  if (!profileError && userProfile) {
+    return userProfile;
+  }
+
+  // Profile doesn't exist, try to create it
+  console.log('User profile not found, attempting to create from auth data');
+  const userMetadata = authUser.user_metadata || {};
+  
+  const newProfile = {
+    id: authUser.id,
+    email: authUser.email,
+    full_name: userMetadata.full_name || authUser.email?.split('@')[0] || 'User',
+    role: userMetadata.role || 'parent', // Default to parent
+    phone: userMetadata.phone || null,
+    avatar_url: userMetadata.avatar_url || null,
+    approval_status: userMetadata.role === 'trainer' ? 'pending' : 'approved',
+  };
+
+  // Try to insert using service role key to bypass RLS
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (supabaseServiceKey && supabaseUrl) {
+    try {
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+
+      const { data: createdProfile, error: createError } = await supabaseAdmin
+        .from('users')
+        .insert(newProfile)
+        .select('id, role, full_name, email')
+        .single();
+
+      if (!createError && createdProfile) {
+        console.log('User profile created successfully');
+        return createdProfile;
+      } else {
+        console.error('Error creating user profile with service key:', createError);
+      }
+    } catch (error) {
+      console.error('Exception creating user profile:', error);
+    }
+  }
+
+  // If service key creation fails, try with regular client (might work if RLS allows)
+  const { data: createdProfile, error: createError } = await supabase
+    .from('users')
+    .insert(newProfile)
+    .select('id, role, full_name, email')
+    .single();
+
+  if (!createError && createdProfile) {
+    console.log('User profile created successfully with regular client');
+    return createdProfile;
+  }
+
+  // If all else fails, return a default profile based on auth user
+  console.warn('Could not create user profile, using default from auth user');
+  return {
+    id: authUser.id,
+    email: authUser.email,
+    full_name: userMetadata.full_name || authUser.email?.split('@')[0] || 'User',
+    role: userMetadata.role || 'parent',
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
     // Get current user for authentication and role-based access
-    const user = await getServerUser();
+    // Pass request to read Authorization header if present
+    const authUser = await getServerUser(request);
     
-    if (!user) {
+    if (!authUser) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
         { status: 401 }
+      );
+    }
+
+    // Get or create user profile from users table to access role
+    const supabase = createSupabaseServerClient(request);
+    let userProfile;
+    try {
+      userProfile = await getOrCreateUserProfile(authUser, supabase);
+    } catch (profileError) {
+      console.error('Error in getOrCreateUserProfile:', profileError);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Failed to get or create user profile',
+          details: profileError instanceof Error ? profileError.message : String(profileError),
+          authUserId: authUser.id
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!userProfile) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Could not get or create user profile',
+          authUserId: authUser.id
+        },
+        { status: 500 }
       );
     }
 
@@ -19,24 +225,38 @@ export async function GET(request: NextRequest) {
 
     let dogs;
     
-    // Role-based access control
-    if (user.role === 'admin') {
-      // Admin can see all dogs or filter by owner
-      if (ownerId) {
-        dogs = await getDogsByOwner(ownerId);
+    try {
+      // Role-based access control - use server-side functions
+      if (userProfile.role === 'admin') {
+        // Admin can see all dogs or filter by owner
+        if (ownerId) {
+          dogs = await getDogsByOwnerServer(supabase, ownerId);
+        } else {
+          dogs = await getAllDogsServer(supabase);
+        }
+      } else if (userProfile.role === 'parent') {
+        // Parents can only see their own dogs
+        dogs = await getDogsByOwnerServer(supabase, authUser.id);
+      } else if (userProfile.role === 'trainer') {
+        // Trainers can see all dogs (for booking purposes)
+        dogs = await getAllDogsServer(supabase);
       } else {
-        dogs = await getAllDogs();
+        return NextResponse.json(
+          { success: false, error: 'Insufficient permissions', role: userProfile.role },
+          { status: 403 }
+        );
       }
-    } else if (user.role === 'parent') {
-      // Parents can only see their own dogs
-      dogs = await getDogsByOwner(user.id);
-    } else if (user.role === 'trainer') {
-      // Trainers can see all dogs (for booking purposes)
-      dogs = await getAllDogs();
-    } else {
+    } catch (dogsError) {
+      console.error('Error fetching dogs list:', dogsError);
+      const errorDetails = dogsError instanceof Error ? dogsError.message : String(dogsError);
+      console.error('Error details:', errorDetails);
       return NextResponse.json(
-        { success: false, error: 'Insufficient permissions' },
-        { status: 403 }
+        {
+          success: false,
+          error: 'Failed to fetch dogs list',
+          details: errorDetails
+        },
+        { status: 500 }
       );
     }
 
@@ -46,10 +266,14 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error fetching dogs:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error('Error details:', { errorMessage, errorStack });
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to fetch dogs'
+        error: 'Failed to fetch dogs',
+        details: errorMessage
       },
       { status: 500 }
     );
@@ -58,16 +282,31 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const currentUser = await getServerUser();
-    if (!currentUser) {
+    const authUser = await getServerUser(request);
+    if (!authUser) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
         { status: 401 }
       );
     }
 
+    // Get or create user profile to check role
+    const supabase = createSupabaseServerClient(request);
+    const userProfile = await getOrCreateUserProfile(authUser, supabase);
+
+    if (!userProfile) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Could not get or create user profile',
+          authUserId: authUser.id
+        },
+        { status: 500 }
+      );
+    }
+
     // Only parents and admins can create dogs
-    if (currentUser.role !== 'parent' && currentUser.role !== 'admin') {
+    if (userProfile.role !== 'parent' && userProfile.role !== 'admin') {
       return NextResponse.json(
         { success: false, error: 'Only parents and admins can register dogs' },
         { status: 403 }
@@ -86,24 +325,30 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine the owner ID
-    let finalOwnerId = currentUser.id; // Default to current user
+    let finalOwnerId = authUser.id; // Default to current user
     
     // If admin is creating a dog for someone else
-    if (currentUser.role === 'admin' && owner_id) {
+    if (userProfile.role === 'admin' && owner_id) {
       finalOwnerId = owner_id;
     }
 
+    // Ensure age is a number (required field)
+    const ageValue = age ? (typeof age === 'number' ? age : parseFloat(age)) : 0;
+    
     const dogData = {
       name,
       breed,
-      age: age || null,
-      weight: weight || null,
+      age: ageValue,
+      weight: weight ? (typeof weight === 'number' ? weight : parseFloat(weight)) : null,
       medical_notes: medical_notes || null,
       behavioral_notes: behavioral_notes || null,
       owner_id: finalOwnerId
     };
 
-    const dog = await createDog(dogData);
+    console.log('Creating dog with data:', dogData);
+
+    // Use server-side function instead of client-side createDog
+    const dog = await createDogServer(supabase, dogData);
 
     return NextResponse.json({
       success: true,
@@ -111,10 +356,86 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating dog:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error ? (error as any).details : undefined;
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error('Error details:', { 
+      errorMessage, 
+      errorDetails,
+      errorStack,
+      errorType: error?.constructor?.name
+    });
+    
+    // Return a proper JSON response with error details
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to create dog'
+        error: 'Failed to create dog',
+        message: errorMessage,
+        details: errorDetails,
+        type: error?.constructor?.name || 'Unknown'
+      },
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const currentUser = await getServerUser(request);
+    if (!currentUser) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const { id, name, breed, age, weight, medical_notes, behavioral_notes, vaccine_records, preferences, emergency_contact } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'Dog ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check permissions - users can only update their own dogs unless they're admin
+    // For now, we'll let updateDog handle the permission check via RLS
+    const updatedDog = await updateDog(id, {
+      name,
+      breed,
+      age: age || null,
+      weight: weight || null,
+      medical_notes: medical_notes || null,
+      behavioral_notes: behavioral_notes || null,
+      vaccine_records: vaccine_records || null,
+      preferences: preferences || null,
+      emergency_contact: emergency_contact || null,
+    });
+
+    if (!updatedDog) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to update dog or dog not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      dog: updatedDog
+    });
+  } catch (error) {
+    console.error('Error updating dog:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update dog'
       },
       { status: 500 }
     );

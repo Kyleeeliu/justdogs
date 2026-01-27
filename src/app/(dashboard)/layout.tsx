@@ -15,7 +15,8 @@ import {
   UserIcon,
   Bars3Icon,
   XMarkIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  NewspaperIcon
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Dogs', href: '/dogs', icon: UserGroupIcon },
   { name: 'Bookings & Sessions', href: '/bookings-sessions', icon: CalendarIcon },
   { name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon },
+  { name: 'News & Events', href: '/news', icon: NewspaperIcon },
   { name: 'Profile', href: '/profile', icon: UserIcon },
 ];
 
