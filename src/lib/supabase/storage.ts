@@ -12,6 +12,9 @@ export interface UploadResult {
 
 export const uploadGalleryImage = async (file: File): Promise<UploadResult> => {
   try {
+    // Ensure bucket exists before uploading
+    await initializeGalleryBucket();
+    
     // Generate a unique filename
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -29,6 +32,13 @@ export const uploadGalleryImage = async (file: File): Promise<UploadResult> => {
 
     if (error) {
       console.error('Error uploading file:', error);
+      // Provide more helpful error message for bucket not found
+      if (error.message?.includes('Bucket not found') || error.message?.includes('not found')) {
+        return {
+          success: false,
+          error: 'Storage bucket not configured. Please create the "gallery-images" bucket in Supabase Storage.'
+        };
+      }
       return {
         success: false,
         error: error.message
@@ -170,6 +180,9 @@ export interface NewsAttachment {
 
 export const uploadNewsAttachment = async (file: File, newsItemId: string): Promise<UploadResult & { attachment?: NewsAttachment }> => {
   try {
+    // Ensure bucket exists before uploading
+    await initializeNewsAttachmentsBucket();
+    
     // Validate file type
     const fileType = file.type.toLowerCase();
     const isPdf = fileType === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
@@ -209,6 +222,13 @@ export const uploadNewsAttachment = async (file: File, newsItemId: string): Prom
 
     if (error) {
       console.error('Error uploading file:', error);
+      // Provide more helpful error message for bucket not found
+      if (error.message?.includes('Bucket not found') || error.message?.includes('not found')) {
+        return {
+          success: false,
+          error: 'Storage bucket not configured. Please create the "news-attachments" bucket in Supabase Storage.'
+        };
+      }
       return {
         success: false,
         error: error.message

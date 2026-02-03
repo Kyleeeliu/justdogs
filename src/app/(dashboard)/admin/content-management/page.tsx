@@ -313,32 +313,45 @@ export default function ContentManagementPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              ...newItem,
+              title: newItem.title,
+              content: newItem.content,
+              date: newItem.date,
+              type: newItem.type,
+              published: newItem.published,
               attachments: [],
-              attachmentFiles: undefined,
-              deletedAttachmentUrls: undefined
             })
           });
           
           const createBody = await createRes.json();
           if (!createRes.ok) {
             console.error('POST /api/news failed:', createBody);
+            alert('Failed to create news item: ' + (createBody.error || 'Unknown error'));
             return;
           }
           savedItemId = createBody.id;
+          console.log('Created news item with ID:', savedItemId);
         }
         
         // Upload new attachment files (now we have an ID)
         if (newItem.attachmentFiles && newItem.attachmentFiles.length > 0 && savedItemId) {
+          console.log('Uploading', newItem.attachmentFiles.length, 'attachment(s) for news item:', savedItemId);
           const uploadPromises = newItem.attachmentFiles.map((file: File) => 
             uploadNewsAttachment(file, savedItemId)
           );
           const uploadResults = await Promise.all(uploadPromises);
           
           const newAttachments = uploadResults
-            .filter(result => result.success && result.attachment)
+            .filter(result => {
+              if (!result.success) {
+                console.error('Attachment upload failed:', result.error);
+                alert('Failed to upload attachment: ' + result.error);
+                return false;
+              }
+              return result.attachment !== undefined;
+            })
             .map(result => result.attachment!);
           
+          console.log('Successfully uploaded', newAttachments.length, 'attachment(s):', newAttachments);
           attachments = [...attachments, ...newAttachments];
         }
 
@@ -351,14 +364,13 @@ export default function ContentManagementPage() {
         }
 
         // Update the item with final attachments (for both new and existing items)
+        console.log('Updating news item', savedItemId, 'with', attachments.length, 'attachment(s):', attachments);
         const res = await fetch('/api/news', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: savedItemId,
-            attachments,
-            attachmentFiles: undefined,
-            deletedAttachmentUrls: undefined
+            attachments: attachments || [],
           })
         });
 
@@ -366,23 +378,50 @@ export default function ContentManagementPage() {
 
         if (!res.ok) {
           console.error('PATCH /api/news failed:', body);
+          alert('Failed to save attachments: ' + (body.error || 'Unknown error'));
           return;
         }
 
-        const saved = body;
-        if (method === 'POST') {
-          setNewsItems((prev) => [saved, ...prev]);
+        console.log('News item updated successfully. Response:', body);
+
+        // Reload the news items to get the complete data with attachments
+        const reloadRes = await fetch('/api/news', { cache: 'no-store' });
+        if (reloadRes.ok) {
+          const reloadData = await reloadRes.json();
+          const bookingsArray: NewsItem[] = Array.isArray(reloadData) ? reloadData : [];
+          const updatedItems = bookingsArray.map((n: any) => ({
+            id: String(n.id),
+            title: n.title ?? '',
+            content: n.content ?? '',
+            date: n.date ? (typeof n.date === 'string' ? n.date : new Date(n.date).toISOString().split('T')[0]) : '',
+            type: n.type ?? 'news',
+            published: !!n.published,
+            attachments: Array.isArray(n.attachments) ? n.attachments : (n.attachments ? [n.attachments] : [])
+          }));
+          console.log('Reloaded news items. Item with attachments:', updatedItems.find(i => i.attachments && i.attachments.length > 0));
+          setNewsItems(updatedItems);
         } else {
-          setNewsItems((prev) => prev.map((i) => (i.id === String(saved.id) ? {
+          // Fallback: use the saved object
+          const saved = body;
+          const updatedItem = {
             id: String(saved.id),
             title: saved.title ?? '',
             content: saved.content ?? '',
             date: saved.date ? (typeof saved.date === 'string' ? saved.date : new Date(saved.date).toISOString().split('T')[0]) : '',
             type: saved.type ?? 'news',
             published: !!saved.published,
-            attachments: saved.attachments || []
-          } : i)));
+            attachments: attachments || []
+          };
+          if (method === 'POST') {
+            setNewsItems((prev) => [updatedItem, ...prev]);
+          } else {
+            setNewsItems((prev) => prev.map((i) => (i.id === String(saved.id) ? updatedItem : i)));
+          }
         }
+        
+        // Close the form on success
+        setShowForm(false);
+        setEditingItem(null);
       } else if (newItem.type === 'events') {
         const method = newItem.id ? 'PATCH' : 'POST';
         const res = await fetch('/api/events', {
@@ -1038,14 +1077,18 @@ function ContentForm({ item, onSave, onCancel }: { item: any; onSave: (data: any
     setUploading(true);
     try {
       // include id when editing so handleSave can PATCH
-      onSave({
+      // Make onSave async-aware by wrapping it
+      await Promise.resolve(onSave({
         ...formData,
         id: item?.id,
         imageFile: selectedFile, // Pass the file to handleSave
         attachments: attachments,
         attachmentFiles: attachmentFiles.length > 0 ? attachmentFiles : undefined,
         deletedAttachmentUrls: deletedAttachmentUrls.length > 0 ? deletedAttachmentUrls : undefined
-      });
+      }));
+    } catch (error) {
+      console.error('Error saving:', error);
+      // Don't close form on error - let user retry
     } finally {
       setUploading(false);
     }

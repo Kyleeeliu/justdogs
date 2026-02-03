@@ -5,11 +5,15 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getNewsItems, NewsItem } from '@/lib/data/content';
+import { useAuth } from '@/hooks/useAuth';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 export default function NewsPage() {
+  const { user, isAuthenticated } = useAuth();
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [previewingPdf, setPreviewingPdf] = useState<string | null>(null);
 
   useEffect(() => {
     const loadNews = async () => {
@@ -83,25 +87,49 @@ export default function NewsPage() {
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex justify-between items-center py-4">
-            <Link href="/" className="flex items-center">
-              <img
-                src="/images/icons/logo.gif"
-                alt="Just Dogs Logo"
-                className="w-[1.6rem] h-8 mr-3"
-              />
-              <span className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</span>
-            </Link>
+            <div className="flex items-center gap-4">
+              {isAuthenticated && (
+                <Link href="/dashboard">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)] hover:bg-[rgb(0_32_96)]/10"
+                  >
+                    <ArrowLeftIcon className="h-4 w-4 mr-2" />
+                    Back to Dashboard
+                  </Button>
+                </Link>
+              )}
+              <Link href="/" className="flex items-center">
+                <img
+                  src="/images/icons/logo.gif"
+                  alt="Just Dogs Logo"
+                  className="w-[1.6rem] h-8 mr-3"
+                />
+                <span className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</span>
+              </Link>
+            </div>
             <div className="flex items-center space-x-4">
-              <Link href="/login">
-                <Button variant="ghost" size="sm" className="text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)]">
-                  Sign In
-                </Button>
-              </Link>
-              <Link href="/register">
-                <Button size="sm" className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white rounded-full px-6">
-                  Get Started
-                </Button>
-              </Link>
+              {isAuthenticated ? (
+                <Link href="/dashboard">
+                  <Button variant="ghost" size="sm" className="text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)]">
+                    Dashboard
+                  </Button>
+                </Link>
+              ) : (
+                <>
+                  <Link href="/login">
+                    <Button variant="ghost" size="sm" className="text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)]">
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link href="/register">
+                    <Button size="sm" className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white rounded-full px-6">
+                      Get Started
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -207,24 +235,46 @@ export default function NewsPage() {
                                     </div>
                                   </>
                                 ) : (
-                                  <>
-                                    <div className="w-16 h-16 bg-red-100 rounded flex items-center justify-center flex-shrink-0">
-                                      <span className="text-2xl">📄</span>
+                                  <div className="w-full">
+                                    <div className="flex items-center gap-3 mb-2">
+                                      <div className="w-12 h-12 bg-red-100 rounded flex items-center justify-center flex-shrink-0">
+                                        <span className="text-xl">📄</span>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-gray-900 truncate">{attachment.filename}</p>
+                                        <p className="text-xs text-gray-500">{(attachment.size / 1024 / 1024).toFixed(2)} MB</p>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => setPreviewingPdf(previewingPdf === attachment.url ? null : attachment.url)}
+                                          className="text-xs"
+                                        >
+                                          {previewingPdf === attachment.url ? 'Hide Preview' : 'Preview'}
+                                        </Button>
+                                        <a
+                                          href={attachment.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          download
+                                          className="text-xs text-blue-600 hover:underline px-2 py-1 rounded border border-blue-200 hover:bg-blue-50"
+                                        >
+                                          Download
+                                        </a>
+                                      </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium text-gray-900 truncate">{attachment.filename}</p>
-                                      <p className="text-xs text-gray-500">{(attachment.size / 1024 / 1024).toFixed(2)} MB</p>
-                                      <a
-                                        href={attachment.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        download
-                                        className="text-xs text-blue-600 hover:underline mt-1 inline-block"
-                                      >
-                                        Download PDF
-                                      </a>
-                                    </div>
-                                  </>
+                                    {previewingPdf === attachment.url && (
+                                      <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                                        <iframe
+                                          src={`${attachment.url}#toolbar=0&navpanes=0&scrollbar=0`}
+                                          className="w-full h-[600px]"
+                                          title={attachment.filename}
+                                          style={{ border: 'none' }}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                   </div>
                 ))}

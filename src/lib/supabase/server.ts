@@ -1,16 +1,17 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+// src/lib/supabase/server.ts
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
-export async function createSupabaseServerClient() {
-  const cookieStore = await cookies();
+export function createSupabaseServerClient() {
+  const cookieStore = cookies()
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll();
+        get(name: string) {
+          return cookieStore.get(name)?.value
         },
         setAll(cookiesToSet) {
           try {
@@ -27,35 +28,42 @@ export async function createSupabaseServerClient() {
   );
 }
 
+/**
+ * Get authenticated user from server-side with error handling
+ */
 export async function getServerUser() {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseServerClient()
+    const { data: { user }, error } = await supabase.auth.getUser()
     
-    // getUser() is the secure way to verify the JWT on the server
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (error) {
+      console.error('Server auth error:', error)
+      return null
+    }
     
-    if (userError || !user) {
-      console.warn('[Server] No user found in session');
-      return null;
+    return user
+  } catch (error) {
+    console.error('Error getting server user:', error)
+    return null
+  }
+}
+
+/**
+ * Get server session with error handling
+ */
+export async function getServerSession() {
+  try {
+    const supabase = createSupabaseServerClient()
+    const { data: { session }, error } = await supabase.auth.getSession()
+    
+    if (error) {
+      console.error('Server session error:', error)
+      return null
     }
-
-    // Fetch profile role
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError) {
-      console.error('[Server] Profile fetch error:', profileError.message);
-    }
-
-    return { 
-      ...user, 
-      role: profile?.role || 'parent' 
-    };
-  } catch (e) {
-    console.error('[Server] Critical Auth Error:', e);
-    return null;
+    
+    return session
+  } catch (error) {
+    console.error('Error getting server session:', error)
+    return null
   }
 }

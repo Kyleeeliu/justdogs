@@ -56,7 +56,11 @@ export async function PATCH(req: Request) {
     if (date !== undefined) updateData.date = date;
     if (type !== undefined) updateData.type = type;
     if (published !== undefined) updateData.published = published;
-    if (attachments !== undefined) updateData.attachments = attachments;
+    if (attachments !== undefined) {
+      // Ensure attachments is properly formatted as JSONB array
+      updateData.attachments = Array.isArray(attachments) ? attachments : (attachments ? [attachments] : []);
+      console.log('Updating news item', id, 'with attachments:', updateData.attachments);
+    }
 
     const supabase = createServiceRoleClient();
     const { data, error } = await supabase
@@ -66,7 +70,12 @@ export async function PATCH(req: Request) {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase update error:', error);
+      throw error;
+    }
+    
+    console.log('News item updated successfully. Returned data:', data);
     return NextResponse.json(data);
   } catch (err: any) {
     console.error('API /api/news PATCH error:', err);
