@@ -18,7 +18,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/hooks/useAuth';
 import { User, Dog } from '@/types';
-import { authenticatedGet, authenticatedPost } from '@/lib/api/apiClient';
+import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete } from '@/lib/api/apiClient';
 
 export default function DogsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -154,24 +154,29 @@ export default function DogsPage() {
       const dogName = prompt('What is your dog\'s name?');
       if (!dogName) return; // User cancelled
       
-      // Create a new dog profile in database based on the assessment
-      await createDog({
+      // Create a new dog profile via API based on the assessment
+      const response = await authenticatedPost('/api/dogs', {
         name: dogName,
         breed: assessment.dogProfile.breed,
-        age: assessment.dogProfile.age.includes('Puppy') ? 0.5 : 
-             assessment.dogProfile.age.includes('Young') ? 2 : 
+        age: assessment.dogProfile.age.includes('Puppy') ? 0.5 :
+             assessment.dogProfile.age.includes('Young') ? 2 :
              assessment.dogProfile.age.includes('Adult') ? 5 : 8,
-        weight: assessment.dogProfile.size.includes('Small') ? 15 : 
-                assessment.dogProfile.size.includes('Medium') ? 40 : 
+        weight: assessment.dogProfile.size.includes('Small') ? 15 :
+                assessment.dogProfile.size.includes('Medium') ? 40 :
                 assessment.dogProfile.size.includes('Large') ? 80 : 120,
-        medical_notes: assessment.dogProfile.healthIssues.length > 0 ? 
+        medical_notes: assessment.dogProfile.healthIssues.length > 0 ?
           `Health issues: ${assessment.dogProfile.healthIssues.join(', ')}` : undefined,
-        behavioral_notes: assessment.dogProfile.behaviorIssues.length > 0 ? 
-          `Behavioral issues: ${assessment.dogProfile.behaviorIssues.join(', ')}. Recommended program: ${assessment.recommendations.primaryProgram}` : 
+        behavioral_notes: assessment.dogProfile.behaviorIssues.length > 0 ?
+          `Behavioral issues: ${assessment.dogProfile.behaviorIssues.join(', ')}. Recommended program: ${assessment.recommendations.primaryProgram}` :
           `Recommended program: ${assessment.recommendations.primaryProgram}`,
         preferences: `Energy level: ${assessment.dogProfile.energyLevel}. Environment: ${assessment.dogProfile.environment}`,
         photo_url: '/api/placeholder/150/150',
       });
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to create dog');
+      }
 
       // Reload dogs from database to get the updated list
       await reloadDogs();
@@ -195,8 +200,8 @@ export default function DogsPage() {
 
     try {
       if (selectedDog && showEditModal) {
-        // Update existing dog
-        await updateDog(selectedDog.id, {
+        // Update existing dog via API
+        const response = await authenticatedPut(`/api/dogs/${selectedDog.id}`, {
           name: formData.name,
           breed: formData.breed,
           age: parseInt(formData.age) || 0,
@@ -211,9 +216,14 @@ export default function DogsPage() {
             relationship: formData.emergency_contact_relationship || 'Owner'
           } : undefined,
         });
+
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to update dog');
+        }
       } else {
-        // Create new dog in database
-        await createDog({
+        // Create new dog via API
+        const response = await authenticatedPost('/api/dogs', {
           name: formData.name,
           breed: formData.breed,
           age: parseInt(formData.age) || 0,
@@ -229,6 +239,11 @@ export default function DogsPage() {
           } : undefined,
           photo_url: '/api/placeholder/150/150',
         });
+
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to create dog');
+        }
       }
 
       // Reload dogs from database to get the updated list
@@ -263,22 +278,21 @@ export default function DogsPage() {
   const [filteredDogs, setFilteredDogs] = useState<Dog[]>([]);
 
   useEffect(() => {
-    const filterDogs = async () => {
+    const filterDogs = () => {
       if (searchTerm.trim()) {
-        try {
-          const results = await searchDogs(searchTerm, user?.role === 'parent' ? user.id : undefined);
-          setFilteredDogs(results);
-        } catch (error) {
-          console.error('Error searching dogs:', error);
-          setFilteredDogs(dogs);
-        }
+        // Simple client-side filtering since we already have the dogs data
+        const filtered = dogs.filter(dog =>
+          dog.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          dog.breed.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        setFilteredDogs(filtered);
       } else {
         setFilteredDogs(dogs);
       }
     };
 
     filterDogs();
-  }, [searchTerm, dogs, user]);
+  }, [searchTerm, dogs]);
 
   if (loading) {
     return (
@@ -425,29 +439,26 @@ export default function DogsPage() {
                 >
                   View Profile
                 </Button>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={async () => {
                     setSelectedDog(dog);
-                    // Load dog data into form
-                    const dogData = await getDogById(dog.id);
-                    if (dogData) {
-                      setFormData({
-                        name: dogData.name,
-                        breed: dogData.breed,
-                        age: dogData.age.toString(),
-                        weight: dogData.weight?.toString() || '',
-                        medical_notes: dogData.medical_notes || '',
-                        behavioral_notes: dogData.behavioral_notes || '',
-                        vaccine_records: dogData.vaccine_records || '',
-                        preferences: dogData.preferences || '',
-                        emergency_contact_name: dogData.emergency_contact?.name || '',
-                        emergency_contact_phone: dogData.emergency_contact?.phone || '',
-                        emergency_contact_relationship: dogData.emergency_contact?.relationship || ''
-                      });
-                      setShowEditModal(true);
-                    }
+                    // Load dog data into form - use the dog data we already have
+                    setFormData({
+                      name: dog.name,
+                      breed: dog.breed,
+                      age: dog.age?.toString() || '',
+                      weight: dog.weight?.toString() || '',
+                      medical_notes: dog.medical_notes || '',
+                      behavioral_notes: dog.behavioral_notes || '',
+                      vaccine_records: dog.vaccine_records || '',
+                      preferences: dog.preferences || '',
+                      emergency_contact_name: dog.emergency_contact?.name || '',
+                      emergency_contact_phone: dog.emergency_contact?.phone || '',
+                      emergency_contact_relationship: dog.emergency_contact?.relationship || ''
+                    });
+                    setShowEditModal(true);
                   }}
                 >
                   Edit
@@ -578,14 +589,21 @@ export default function DogsPage() {
                     className="text-red-600 border-red-600 hover:bg-red-50 hover:text-red-700"
                     onClick={async () => {
                       if (confirm(`Are you sure you want to delete ${selectedDog.name}? This action cannot be undone.`)) {
-                        const success = await deleteDog(selectedDog.id);
-                        if (success) {
-                          // Reload dogs from database
-                          await reloadDogs();
-                          setShowViewModal(false);
-                          setSelectedDog(null);
-                          alert(`${selectedDog.name} has been deleted successfully.`);
-                        } else {
+                        try {
+                          const response = await authenticatedDelete(`/api/dogs/${selectedDog.id}`);
+                          const data = await response.json();
+                          
+                          if (data.success) {
+                            // Reload dogs from database
+                            await reloadDogs();
+                            setShowViewModal(false);
+                            setSelectedDog(null);
+                            alert(`${selectedDog.name} has been deleted successfully.`);
+                          } else {
+                            alert('Failed to delete dog. Please try again.');
+                          }
+                        } catch (error) {
+                          console.error('Error deleting dog:', error);
                           alert('Failed to delete dog. Please try again.');
                         }
                       }
@@ -599,24 +617,21 @@ export default function DogsPage() {
                   <Button
                     onClick={async () => {
                       setShowViewModal(false);
-                      // Load dog data into form for editing
-                      const dogData = await getDogById(selectedDog.id);
-                      if (dogData) {
-                        setFormData({
-                          name: dogData.name,
-                          breed: dogData.breed,
-                          age: dogData.age.toString(),
-                          weight: dogData.weight?.toString() || '',
-                          medical_notes: dogData.medical_notes || '',
-                          behavioral_notes: dogData.behavioral_notes || '',
-                          vaccine_records: dogData.vaccine_records || '',
-                          preferences: dogData.preferences || '',
-                          emergency_contact_name: dogData.emergency_contact?.name || '',
-                          emergency_contact_phone: dogData.emergency_contact?.phone || '',
-                          emergency_contact_relationship: dogData.emergency_contact?.relationship || ''
-                        });
-                        setShowEditModal(true);
-                      }
+                      // Load dog data into form for editing - use the selectedDog data we already have
+                      setFormData({
+                        name: selectedDog.name,
+                        breed: selectedDog.breed,
+                        age: selectedDog.age?.toString() || '',
+                        weight: selectedDog.weight?.toString() || '',
+                        medical_notes: selectedDog.medical_notes || '',
+                        behavioral_notes: selectedDog.behavioral_notes || '',
+                        vaccine_records: selectedDog.vaccine_records || '',
+                        preferences: selectedDog.preferences || '',
+                        emergency_contact_name: selectedDog.emergency_contact?.name || '',
+                        emergency_contact_phone: selectedDog.emergency_contact?.phone || '',
+                        emergency_contact_relationship: selectedDog.emergency_contact?.relationship || ''
+                      });
+                      setShowEditModal(true);
                     }}
                   >
                     Edit Profile
