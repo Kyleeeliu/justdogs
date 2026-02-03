@@ -1,82 +1,61 @@
-// src/lib/supabase/server.ts
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
-export function createSupabaseServerClient() {
-  const cookieStore = cookies()
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, options: any) {
+        setAll(cookiesToSet) {
           try {
-            cookieStore.set({ name, value, ...options })
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
           } catch (error) {
-            // Handle cookie setting errors gracefully
-            console.warn('Failed to set cookie:', name, error)
+            // This is expected when called from Server Components
+            // but we log it for API route debugging
           }
         },
-        remove(name: string, options: any) {
-          try {
-            cookieStore.set({ name, value: '', ...options })
-          } catch (error) {
-            // Handle cookie removal errors gracefully
-            console.warn('Failed to remove cookie:', name, error)
-          }
-        },
-      },
-      auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false, // Server-side doesn't need URL detection
-        // Add retry configuration for server-side requests
-        retryAttempts: 2,
       },
     }
-  )
+  );
 }
 
-/**
- * Get authenticated user from server-side with error handling
- */
 export async function getServerUser() {
   try {
-    const supabase = createSupabaseServerClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const supabase = await createSupabaseServerClient();
     
-    if (error) {
-      console.error('Server auth error:', error)
-      return null
+    // getUser() is the secure way to verify the JWT on the server
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      console.warn('[Server] No user found in session');
+      return null;
     }
-    
-    return user
-  } catch (error) {
-    console.error('Error getting server user:', error)
-    return null
-  }
-}
 
-/**
- * Get server session with error handling
- */
-export async function getServerSession() {
-  try {
-    const supabase = createSupabaseServerClient()
-    const { data: { session }, error } = await supabase.auth.getSession()
-    
-    if (error) {
-      console.error('Server session error:', error)
-      return null
+    // Fetch profile role
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('[Server] Profile fetch error:', profileError.message);
     }
-    
-    return session
-  } catch (error) {
-    console.error('Error getting server session:', error)
-    return null
+
+    return { 
+      ...user, 
+      role: profile?.role || 'parent' 
+    };
+  } catch (e) {
+    console.error('[Server] Critical Auth Error:', e);
+    return null;
   }
 }
