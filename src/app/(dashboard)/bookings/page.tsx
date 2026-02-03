@@ -10,6 +10,7 @@ import { formatDateTime } from '@/lib/utils';
 import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
 import { getAllDogs, getDogsByOwner } from '@/lib/supabase/dogs';
 import { getUsersByRole } from '@/lib/supabase/users';
+import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/lib/api/apiClient';
 /* ---------------------------------- */
 type BookingWithRelations = Booking & {
   dogs?: {
@@ -46,7 +47,7 @@ export default function BookingsPage() {
       try {
         setLoading(true);
 
-        const res = await fetch('/api/bookings');
+        const res = await authenticatedGet('/api/bookings');
 
         if (!res.ok) {
           console.error('Failed to fetch bookings');
@@ -111,40 +112,34 @@ export default function BookingsPage() {
       parentId = dog.owner_id;
     }
 
-    const res = await fetch('/api/bookings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, parent_id: parentId }),
-    });
+    const res = await authenticatedPost('/api/bookings', { ...data, parent_id: parentId });
 
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Create failed');
     }
 
     // reload list
-    const updated = await fetch('/api/bookings').then(r => r.json());
-    setBookings(updated);
+    const listRes = await authenticatedGet('/api/bookings');
+    const updated = listRes.ok ? await listRes.json() : [];
+    setBookings(Array.isArray(updated) ? updated : []);
   };
 
   /* ---------- APPROVE/REJECT BOOKING ---------- */
 
   const handleBookingStatusUpdate = async (bookingId: string, status: 'confirmed' | 'cancelled') => {
     try {
-      const res = await fetch('/api/bookings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: bookingId, status }),
-      });
+      const res = await authenticatedPut('/api/bookings', { id: bookingId, status });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Update failed');
       }
 
       // Reload bookings
-      const updated = await fetch('/api/bookings').then(r => r.json());
-      setBookings(updated);
+      const listRes = await authenticatedGet('/api/bookings');
+      const updated = listRes.ok ? await listRes.json() : [];
+      setBookings(Array.isArray(updated) ? updated : []);
     } catch (error) {
       console.error('Error updating booking status:', error);
       alert('Failed to update booking status');

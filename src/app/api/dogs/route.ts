@@ -220,36 +220,66 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Resolve role from users table with service role so we're sure (avoids RLS/cache issues)
+    let role = userProfile.role;
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      const adminClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      const { data: userRow } = await adminClient
+        .from('users')
+        .select('role')
+        .eq('id', authUser.id)
+        .single();
+      if (userRow?.role) {
+        role = userRow.role;
+      }
+    }
+
     const { searchParams } = new URL(request.url);
     const ownerId = searchParams.get('owner_id');
 
-    let dogs;
-    
+    let dogs: Dog[] = [];
+
+    // Use service role for admin/trainer so we bypass RLS and always get all dogs
+    const isAdmin = role === 'admin';
+    const isTrainer = role === 'trainer';
+    const hasServiceKey = !!(process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL);
+
+    const supabaseAdmin = hasServiceKey
+      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        })
+      : null;
+
     try {
-      // Role-based access control - use server-side functions
-      if (userProfile.role === 'admin') {
-        // Admin can see all dogs or filter by owner
+      if (role === 'admin') {
         if (ownerId) {
-          dogs = await getDogsByOwnerServer(supabase, ownerId);
+          dogs = await getDogsByOwnerServer(supabaseAdmin || supabase, ownerId);
         } else {
-          dogs = await getAllDogsServer(supabase);
+          // Admin viewing all dogs: always use service role when available so RLS doesn't hide rows
+          dogs = await getAllDogsServer(supabaseAdmin || supabase);
+          if (supabaseAdmin) {
+            console.log('[API] GET /api/dogs: admin using service role, dogs count =', dogs.length);
+          } else {
+            console.warn('[API] GET /api/dogs: SUPABASE_SERVICE_ROLE_KEY not set; admin may see no dogs if RLS restricts');
+          }
         }
-      } else if (userProfile.role === 'parent') {
-        // Parents can only see their own dogs
+      } else if (role === 'parent') {
         dogs = await getDogsByOwnerServer(supabase, authUser.id);
-      } else if (userProfile.role === 'trainer') {
-        // Trainers can see all dogs (for booking purposes)
-        dogs = await getAllDogsServer(supabase);
+      } else if (role === 'trainer') {
+        dogs = await getAllDogsServer(supabaseAdmin || supabase);
       } else {
         return NextResponse.json(
-          { success: false, error: 'Insufficient permissions', role: userProfile.role },
+          { success: false, error: 'Insufficient permissions', role },
           { status: 403 }
         );
       }
     } catch (dogsError) {
       console.error('Error fetching dogs list:', dogsError);
       const errorDetails = dogsError instanceof Error ? dogsError.message : String(dogsError);
-      console.error('Error details:', errorDetails);
       return NextResponse.json(
         {
           success: false,
@@ -260,9 +290,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const dogsList = Array.isArray(dogs) ? dogs : [];
+    console.log('[API] GET /api/dogs: role=%s, returning %d dogs', role, dogsList.length);
+
     return NextResponse.json({
       success: true,
-      dogs
+      dogs: dogsList
     });
   } catch (error) {
     console.error('Error fetching dogs:', error);

@@ -96,9 +96,9 @@ export default function DashboardLayout({
               <Image
                 src="/images/icons/logo.png"
                 alt="Just Dogs Logo"
-                width={32}
+                width={24}
                 height={32}
-                className="w-8 h-8 mr-2"
+                className="w-6 h-8 mr-2 object-contain"
               />
               <h1 className="text-lg sm:text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</h1>
             </Link>
@@ -162,9 +162,9 @@ export default function DashboardLayout({
               <Image
                 src="/images/icons/logo.png"
                 alt="Just Dogs Logo"
-                width={32}
+                width={24}
                 height={32}
-                className="w-8 h-8 mr-2"
+                className="w-6 h-8 mr-2 object-contain"
               />
               <h1 className="text-xl font-bold text-[rgb(0_32_96)]">Just Dogs</h1>
             </Link>

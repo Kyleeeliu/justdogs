@@ -90,10 +90,14 @@ export default function DogsPage() {
       }
       
       const data = await response.json();
-      
-      if (data.success && data.dogs) {
-        setDogs(data.dogs);
-        setFilteredDogs(data.dogs);
+
+      const dogsList = Array.isArray(data.dogs) ? data.dogs : [];
+      if (data.success) {
+        setDogs(dogsList);
+        setFilteredDogs(dogsList);
+        if (dogsList.length === 0 && !data.error) {
+          console.log('Dogs loaded: 0 dogs (API returned success with empty array)');
+        }
       } else {
         if (data.error !== 'Authentication required') {
           console.error('Error loading dogs:', data.error || data.details || 'Unknown error');
@@ -129,19 +133,20 @@ export default function DogsPage() {
       }
       
       const data = await response.json();
-      
-      if (data.success && data.dogs) {
-        setDogs(data.dogs);
+
+      const dogsList = Array.isArray(data.dogs) ? data.dogs : [];
+      if (data.success) {
+        setDogs(dogsList);
         if (searchTerm.trim()) {
           try {
             const results = await searchDogs(searchTerm, user?.role === 'parent' ? user.id : undefined);
             setFilteredDogs(results);
           } catch (error) {
             console.error('Error searching dogs during reload:', error);
-            setFilteredDogs(data.dogs);
+            setFilteredDogs(dogsList);
           }
         } else {
-          setFilteredDogs(data.dogs);
+          setFilteredDogs(dogsList);
         }
       }
     } catch (error) {

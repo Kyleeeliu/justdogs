@@ -29,11 +29,21 @@ interface CreateBookingModalProps {
 }
 
 const BOOKING_TYPES = [
-  { value: 'behavior_and_home', label: 'Behavior and Home' },
-  { value: 'academy', label: 'Academy' },
-  { value: 'farm', label: 'Farm' },
-  { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
+  { value: 'Behavior and Home', label: 'Behavior and Home' },
+  { value: 'Academy', label: 'Academy' },
+  { value: 'Farm', label: 'Farm' },
+  { value: 'Service & Emotional Support', label: 'Service & Emotional Support' },
 ];
+
+/** Format a Date for datetime-local input (local time) */
+function toLocalDatetimeLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
 
 export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, userRole }: CreateBookingModalProps) {
   const [formData, setFormData] = useState<BookingFormData>({
@@ -52,11 +62,13 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
 
   useEffect(() => {
     if (isOpen) {
+      const now = new Date();
+      const endTime = new Date(now.getTime() + 60 * 60 * 1000);
       setFormData({
         dog_id: '',
         booking_type: '',
-        start_time: '',
-        end_time: '',
+        start_time: toLocalDatetimeLocal(now),
+        end_time: toLocalDatetimeLocal(endTime),
         notes: '',
         trainer_id: '',
         recurring: false,

@@ -12,6 +12,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime, formatTime } from '@/lib/utils';
 import { Booking } from '@/types';
+import { authenticatedGet } from '@/lib/api/apiClient';
 
 /* -------------------------------------------------- */
 
@@ -29,7 +30,7 @@ export default function SessionsPage() {
     const loadSessions = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/bookings');
+        const res = await authenticatedGet('/api/bookings');
 
         if (!res.ok) {
           console.error('Failed to fetch bookings');

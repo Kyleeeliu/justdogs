@@ -12,6 +12,7 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import { AvailableSlot, User, Dog, BookingSlotFormData } from '@/types';
+import { authenticatedPost } from '@/lib/api/apiClient';
 
 interface BookingSlotSelectorProps {
   trainers: User[];
@@ -105,14 +106,10 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
         location: bookingDetails.location
       };
 
-      const response = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...bookingData,
-          parent_id: currentUser.id,
-          booking_type: 'dog_training'
-        })
+      const response = await authenticatedPost('/api/bookings', {
+        ...bookingData,
+        parent_id: currentUser.id,
+        booking_type: 'dog_training'
       });
 
       if (!response.ok) {
