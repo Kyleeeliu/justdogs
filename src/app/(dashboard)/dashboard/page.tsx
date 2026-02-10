@@ -169,10 +169,10 @@ export default function DashboardPage() {
     };
     loadBookingData();
   }, [showCreateModal, user]);
+const handleCreateBooking = async (bookingData: BookingFormData) => {
+  if (!user) throw new Error('User not found');
 
-  const handleCreateBooking = async (bookingData: BookingFormData) => {
-    if (!user) throw new Error('User not found');
-
+  try {
     // 1. Determine Parent ID
     let parentId = user.id;
     if (user.role === 'admin') {
@@ -190,15 +190,19 @@ export default function DashboardPage() {
       end_time: bookingData.end_time ? new Date(bookingData.end_time).toISOString() : null,
     };
 
-    // 3. Send via authenticatedPost
-    const response = await authenticatedPost('/api/bookings', payload);
+    console.log('Sending booking payload:', payload);
 
+    // 3. Send via authenticatedPost - it returns a Response object, not parsed JSON
+    const response = await authenticatedPost('/api/bookings', payload);
+    
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Authentication or Server Error' }));
+      const errorData = await response.json().catch(() => ({ error: 'Server Error' }));
       throw new Error(errorData.error || 'Failed to create booking');
     }
 
     const result = await response.json();
+    
+    console.log('Booking API response:', result);
     
     if (result.success) {
       alert('Booking created successfully!');
@@ -206,11 +210,15 @@ export default function DashboardPage() {
       router.refresh();
       router.push('/bookings');
     } else {
-      throw new Error(result.error || 'Failed to create booking');
+      throw new Error(result.error || result.message || 'Failed to create booking');
     }
-  };
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    throw error;
+  }
+};
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(0_32_96)]" /></div>;
+if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(0_32_96)]" /></div>;
   if (!user) return <div>User not found</div>;
 
   const renderAdminDashboard = () => {

@@ -6,11 +6,12 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { getMessagesByUser } from '@/lib/supabase/messages';
 
-import { 
-  HomeIcon, 
-  UserGroupIcon, 
-  CalendarIcon, 
+import {
+  HomeIcon,
+  UserGroupIcon,
+  CalendarIcon,
   ChatBubbleLeftRightIcon,
   UserIcon,
   Bars3Icon,
@@ -34,6 +35,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading, initialized, logout, isAuthenticated } = useAuth();
@@ -49,6 +51,55 @@ export default function DashboardLayout({
       router.push('/login');
     }
   }, [initialized, loading, isAuthenticated, user, router]);
+
+  // Load unread message count
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      if (!user) return;
+      
+      try {
+        const messages = await getMessagesByUser(user.id);
+        const unreadCount = messages.filter(msg => !msg.read_at && msg.sender_id !== user.id).length;
+        setUnreadMessageCount(unreadCount);
+      } catch (error) {
+        console.error('Error loading unread message count:', error);
+        setUnreadMessageCount(0);
+      }
+    };
+
+    loadUnreadCount();
+    
+    // Set up interval to refresh unread count every 30 seconds
+    const interval = setInterval(loadUnreadCount, 30000);
+    
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Listen for messages read events and clear unread count when visiting messages page
+  useEffect(() => {
+    const handleMessagesRead = (event: CustomEvent) => {
+      setUnreadMessageCount(prev => Math.max(0, prev - event.detail.count));
+    };
+
+    // Listen for custom event from messages page
+    window.addEventListener('messagesRead', handleMessagesRead as EventListener);
+
+    if (pathname === '/messages') {
+      // Small delay to allow messages to be marked as read
+      const timer = setTimeout(() => {
+        setUnreadMessageCount(0);
+      }, 1000);
+      
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('messagesRead', handleMessagesRead as EventListener);
+      };
+    }
+
+    return () => {
+      window.removeEventListener('messagesRead', handleMessagesRead as EventListener);
+    };
+  }, [pathname]);
 
   const handleSignOut = async () => {
     try {
@@ -113,6 +164,7 @@ export default function DashboardLayout({
           <nav className="flex-1 space-y-1 px-3 py-4">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
+              const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
               return (
                 <Link
                   key={item.name}
@@ -125,7 +177,12 @@ export default function DashboardLayout({
                     onClick={() => setSidebarOpen(false)}
                 >
                   <item.icon className="mr-3 h-6 w-6" />
-                  {item.name}
+                  <span className="flex-1">{item.name}</span>
+                  {showBadge && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                      {unreadMessageCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -172,6 +229,7 @@ export default function DashboardLayout({
           <nav className="flex-1 space-y-1 px-2 py-4">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
+              const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
               return (
                 <Link
                   key={item.name}
@@ -183,7 +241,12 @@ export default function DashboardLayout({
                   }`}
                 >
                   <item.icon className="mr-3 h-5 w-5" />
-                  {item.name}
+                  <span className="flex-1">{item.name}</span>
+                  {showBadge && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[18px] text-center">
+                      {unreadMessageCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -250,17 +313,25 @@ export default function DashboardLayout({
           <nav className="flex justify-around">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
+              const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`flex flex-col items-center py-2 px-3 text-xs font-medium transition-colors ${
+                  className={`flex flex-col items-center py-2 px-3 text-xs font-medium transition-colors relative ${
                     isActive
                       ? 'text-[rgb(0_32_96)]'
                       : 'text-gray-500 hover:text-[rgb(0_32_96)]'
                   }`}
                 >
-                  <item.icon className="h-6 w-6 mb-1" />
+                  <div className="relative">
+                    <item.icon className="h-6 w-6 mb-1" />
+                    {showBadge && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[16px] text-center leading-none">
+                        {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="truncate max-w-[60px]">{item.name}</span>
                 </Link>
               );

@@ -205,7 +205,7 @@ export interface DogFormData {
 
 export interface BookingFormData {
   dog_id: string;
-  trainer_id: string;
+  trainer_id: string | null;
   booking_type: BookingType;
   training_level?: TrainingLevel;
   consult_type?: ConsultType;

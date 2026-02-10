@@ -29,12 +29,11 @@ interface CreateBookingModalProps {
 }
 
 const BOOKING_TYPES = [
-  { value: 'Behavior and Home', label: 'Behavior and Home' },
-  { value: 'Academy', label: 'Academy' },
-  { value: 'Farm', label: 'Farm' },
-  { value: 'Service & Emotional Support', label: 'Service & Emotional Support' },
+  { value: 'behavior_and_home', label: 'Behavior and Home' },
+  { value: 'academy', label: 'Academy' },
+  { value: 'farm', label: 'Farm' },
+  { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
 ];
-
 /** Format a Date for datetime-local input (local time) */
 function toLocalDatetimeLocal(d: Date): string {
   const y = d.getFullYear();

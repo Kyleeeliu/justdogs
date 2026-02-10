@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   CalendarIcon,
@@ -18,13 +18,15 @@ import {
   MapPinIcon,
   UserIcon,
   UserGroupIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/hooks/useAuth';
 import { Booking, BookingStatus, Dog, User } from '@/types';
 import { authenticatedGet, authenticatedFetch } from '@/lib/api/apiClient';
-import { formatDateTime, formatTime, getInitials } from '@/lib/utils';
-import { getDogById } from '@/lib/supabase/dogs';
-import { getUserById } from '@/lib/supabase/users';
+import { formatDateTime, formatTime } from '@/lib/utils';
+import { getDogById, getAllDogs, getDogsByOwner } from '@/lib/supabase/dogs';
+import { getUserById, getUsersByRole } from '@/lib/supabase/users';
+import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
 
 interface BookingWithDetails extends Booking {
   dog?: Dog;
@@ -36,82 +38,161 @@ export default function BookingsSessionsPage() {
   const { user, loading: authLoading } = useAuth();
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'bookings' | 'sessions'>('bookings');
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
   const [search, setSearch] = useState('');
   const [expandedBookings, setExpandedBookings] = useState<Set<string>>(new Set());
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [dogs, setDogs] = useState<Dog[]>([]);
+  const [trainers, setTrainers] = useState<User[]>([]);
+  const [showTrainerAssignment, setShowTrainerAssignment] = useState<string | null>(null);
 
   // Load bookings with related data
+  const loadBookings = async () => {
+  if (!user || authLoading) return;
+
+  try {
+    setLoading(true);
+    console.log('🔍 Fetching bookings for user:', user.role, user.email);
+    
+    const res = await authenticatedGet('/api/bookings');
+    console.log('📡 Response status:', res.status);
+    
+    if (!res.ok) {
+      console.error('❌ Failed to fetch bookings:', res.status);
+      setBookings([]);
+      return;
+    }
+
+    const data = await res.json();
+    console.log('✅ Bookings data received:', data);
+    console.log('📊 Raw bookings count:', data.length);
+    const bookingsArray: Booking[] = Array.isArray(data) ? data : [];
+
+    // Server already filtered by role, so use all returned bookings
+    const visible = bookingsArray;
+
+    console.log('📋 Visible bookings before fetching details:', visible.length);
+
+    // Fetch related data (dogs, trainers, parents)
+    const bookingsWithDetails = await Promise.all(
+      visible.map(async (booking) => {
+        const [dog, trainer, parent] = await Promise.all([
+          getDogById(booking.dog_id).catch(() => null),
+          booking.trainer_id ? getUserById(booking.trainer_id).catch(() => null) : null,
+          booking.parent_id ? getUserById(booking.parent_id).catch(() => null) : null,
+        ]);
+
+        return {
+          ...booking,
+          dog: dog || undefined,
+          trainer: trainer || undefined,
+          parent: parent || undefined,
+        };
+      })
+    );
+
+    console.log('📊 Bookings with details:', bookingsWithDetails.length);
+    console.log('First booking with details:', bookingsWithDetails[0]);
+    setBookings(bookingsWithDetails);
+  } catch (err) {
+    console.error('💥 Error loading bookings:', err);
+    setBookings([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
   useEffect(() => {
-    if (!user) return;
-
-    const loadBookings = async () => {
-      try {
-        setLoading(true);
-        
-        const res = await authenticatedGet('/api/bookings');
-        const data = await res.json();
-        const bookingsArray: Booking[] = Array.isArray(data) ? data : [];
-
-        // Filter based on user role
-        let visible = bookingsArray;
-        if (user.role === 'parent') {
-          visible = bookingsArray.filter(b => b.parent_id === user.id);
-        } else if (user.role === 'trainer') {
-          visible = bookingsArray.filter(b => b.trainer_id === user.id);
-        }
-
-        // Fetch related data (dogs, trainers, parents)
-        const bookingsWithDetails = await Promise.all(
-          visible.map(async (booking) => {
-            const [dog, trainer, parent] = await Promise.all([
-              getDogById(booking.dog_id).catch(() => null),
-              booking.trainer_id ? getUserById(booking.trainer_id).catch(() => null) : null,
-              booking.parent_id ? getUserById(booking.parent_id).catch(() => null) : null,
-            ]);
-
-            return {
-              ...booking,
-              dog: dog || undefined,
-              trainer: trainer || undefined,
-              parent: parent || undefined,
-            };
-          })
-        );
-
-        setBookings(bookingsWithDetails);
-      } catch (err) {
-        console.error('Error loading bookings:', err);
-        setBookings([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadBookings();
-  }, [user]);
+  }, [user, authLoading]);
 
-  // Update booking status
-  const handleBookingStatusUpdate = async (bookingId: string, status: 'confirmed' | 'cancelled') => {
+  // Load dogs and trainers when modal opens
+useEffect(() => {
+  const loadInitialData = async () => {
+    if (!user || authLoading) return;
+    
+    // Load trainers immediately (needed for assignment modal)
     try {
+      const trainersData = await getUsersByRole('trainer');
+      setTrainers(trainersData);
+    } catch (error) {
+      console.error('Error loading trainers:', error);
+    }
+    
+    // Load bookings
+    await loadBookings();
+  };
+  
+  loadInitialData();
+}, [user, authLoading]);
+
+  // Create booking
+  const handleCreateBooking = async (formData: BookingFormData) => {
+    try {
+      const selectedDog = dogs.find(d => d.id === formData.dog_id);
+      const payload = {
+        ...formData,
+        parent_id: selectedDog?.owner_id || user?.id,
+      };
+
+      console.log('Creating booking with payload:', payload);
+
       const res = await authenticatedFetch('/api/bookings', {
-        method: 'PUT',
-        body: JSON.stringify({ id: bookingId, status }),
+        method: 'POST',
+        body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Update failed');
+      if (res.ok) {
+        const result = await res.json();
+        console.log('Booking created:', result);
+        setShowCreateModal(false);
+        await loadBookings();
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Server Error' }));
+        console.error('Failed to create booking:', errorData);
+        throw new Error(errorData.error || 'Failed to create booking');
       }
-
-      // Update local state
-      setBookings(prev => prev.map(b => 
-        b.id === bookingId ? { ...b, status } : b
-      ));
-    } catch (error) {
-      console.error('Error updating booking status:', error);
-      alert('Failed to update booking status');
+    } catch (error: any) {
+      console.error('Error creating booking:', error);
+      throw error;
     }
+  };
+
+  // Update booking status
+  const handleBookingStatusUpdate = async (bookingId: string, status: 'confirmed' | 'cancelled', trainerId?: string) => {
+  try {
+    const updateData: any = { id: bookingId, status };
+    if (trainerId) {
+      updateData.trainer_id = trainerId;
+    }
+
+    const res = await authenticatedFetch('/api/bookings', {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Update failed');
+    }
+
+    const result = await res.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Update failed');
+    }
+
+    // Reload bookings to get fresh data
+    await loadBookings();
+  } catch (error) {
+    console.error('Error updating booking status:', error);
+    alert('Failed to update booking status: ' + error.message);
+  }
+};
+
+  // Handle trainer assignment for pending bookings
+  const handleTrainerAssignment = async (bookingId: string, trainerId: string) => {
+    await handleBookingStatusUpdate(bookingId, 'confirmed', trainerId);
   };
 
   // Toggle booking expansion
@@ -129,14 +210,6 @@ export default function BookingsSessionsPage() {
 
   // Filter bookings
   const filteredBookings = bookings.filter(b => {
-    // Tab filtering
-    if (activeTab === 'sessions' && b.status !== 'confirmed' && b.status !== 'completed') {
-      return false;
-    }
-    if (activeTab === 'bookings' && (b.status === 'confirmed' || b.status === 'completed')) {
-      return false;
-    }
-
     // Status filter
     if (filter !== 'all' && b.status !== filter) return false;
 
@@ -237,8 +310,19 @@ export default function BookingsSessionsPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Bookings & Sessions</h1>
-          <p className="text-gray-600 mt-1">Manage your training sessions and bookings</p>
+          <p className="text-gray-600 mt-1">
+            Manage your training sessions and bookings
+          </p>
         </div>
+        {(user?.role === 'admin' || user?.role === 'parent') && (
+          <Button 
+            onClick={() => setShowCreateModal(true)}
+            className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            New Booking
+          </Button>
+        )}
       </div>
 
       {/* Statistics Cards */}
@@ -275,32 +359,6 @@ export default function BookingsSessionsPage() {
         </Card>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('bookings')}
-          className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === 'bookings'
-              ? 'border-[rgb(0_32_96)] text-[rgb(0_32_96)]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          <CalendarIcon className="h-4 w-4 inline mr-2" />
-          Bookings
-        </button>
-        <button
-          onClick={() => setActiveTab('sessions')}
-          className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === 'sessions'
-              ? 'border-[rgb(0_32_96)] text-[rgb(0_32_96)]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          <DocumentTextIcon className="h-4 w-4 inline mr-2" />
-          Sessions
-        </button>
-      </div>
-
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
@@ -333,13 +391,22 @@ export default function BookingsSessionsPage() {
           <CardContent className="text-center py-16">
             <CalendarIcon className="h-16 w-16 mx-auto text-gray-300 mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              No {activeTab} found
+              No bookings found
             </h3>
-            <p className="text-gray-600">
+            <p className="text-gray-600 mb-4">
               {search || filter !== 'all'
                 ? 'Try adjusting your search or filters'
-                : `You don't have any ${activeTab} yet`}
+                : `You don't have any bookings yet`}
             </p>
+            {(user?.role === 'admin' || user?.role === 'parent') && !search && filter === 'all' && (
+              <Button 
+                onClick={() => setShowCreateModal(true)}
+                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+              >
+                <PlusIcon className="h-4 w-4 mr-2" />
+                Create Your First Booking
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -402,12 +469,6 @@ export default function BookingsSessionsPage() {
                                         <span>{booking.trainer.full_name}</span>
                                       </div>
                                     )}
-                                    {booking.location && (
-                                      <div className="flex items-center gap-1">
-                                        <MapPinIcon className="h-4 w-4" />
-                                        <span className="truncate">{booking.location}</span>
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -419,8 +480,8 @@ export default function BookingsSessionsPage() {
                                     size="sm"
                                     variant="outline"
                                     className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
-                                    onClick={() => handleBookingStatusUpdate(booking.id, 'confirmed')}
-                                    title="Approve booking"
+                                    onClick={() => setShowTrainerAssignment(booking.id)}
+                                    title="Assign trainer and approve"
                                   >
                                     <CheckIcon className="h-4 w-4" />
                                   </Button>
@@ -469,18 +530,6 @@ export default function BookingsSessionsPage() {
                                       {booking.booking_type.replace(/_/g, ' ')}
                                     </span>
                                   </div>
-                                  {booking.training_level && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Training Level:</span>
-                                      <span className="font-medium text-gray-900 capitalize">{booking.training_level}</span>
-                                    </div>
-                                  )}
-                                  {booking.consult_type && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Consult Type:</span>
-                                      <span className="font-medium text-gray-900 capitalize">{booking.consult_type}</span>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                               <div>
@@ -500,16 +549,10 @@ export default function BookingsSessionsPage() {
                                       <span className="font-medium text-gray-900">{booking.trainer.full_name}</span>
                                     </div>
                                   )}
-                                  {booking.parent && (
+                                  {booking.parent && user?.role === 'admin' && (
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">Owner:</span>
                                       <span className="font-medium text-gray-900">{booking.parent.full_name}</span>
-                                    </div>
-                                  )}
-                                  {booking.location && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Location:</span>
-                                      <span className="font-medium text-gray-900">{booking.location}</span>
                                     </div>
                                   )}
                                 </div>
@@ -536,6 +579,79 @@ export default function BookingsSessionsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Create Booking Modal */}
+      {user && (
+        <CreateBookingModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleCreateBooking}
+          dogs={dogs.map(d => ({ id: d.id, name: d.name }))}
+          trainers={trainers.map(t => ({ id: t.id, name: t.full_name, full_name: t.full_name }))}
+          userRole={user.role}
+        />
+      )}
+
+      {/* Trainer Assignment Modal */}
+      {showTrainerAssignment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Assign Trainer
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Select a trainer to assign to this booking and approve it.
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Choose Trainer
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-gray-900"
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleTrainerAssignment(showTrainerAssignment, e.target.value);
+                      setShowTrainerAssignment(null);
+                    }
+                  }}
+                  defaultValue=""
+                >
+                  <option value="">Select a trainer...</option>
+                  {trainers
+                    .filter(trainer => trainer.role === 'trainer')
+                    .map(trainer => (
+                      <option key={trainer.id} value={trainer.id}>
+                        {trainer.full_name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowTrainerAssignment(null)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    // Approve without trainer assignment
+                    handleBookingStatusUpdate(showTrainerAssignment, 'confirmed');
+                    setShowTrainerAssignment(null);
+                  }}
+                  className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+                >
+                  Approve Without Trainer
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

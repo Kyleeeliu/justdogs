@@ -32,7 +32,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     storageKey: 'sb-pajtampwqutuuidklxbv-auth-token', // Use consistent storage key with project ref
-    debug: process.env.NODE_ENV === 'development',
+    debug: false,
     // Add retry configuration for refresh token failures
     retryAttempts: 3,
     // Handle refresh token errors gracefully

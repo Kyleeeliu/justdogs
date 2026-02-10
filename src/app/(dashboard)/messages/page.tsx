@@ -343,20 +343,27 @@ export default function MessagesPage() {
         msg => !msg.read_at && msg.sender_id !== currentUser?.id
       );
 
-      for (const msg of unreadMessages) {
-        try {
-          await markMessageAsRead(msg.id);
-        } catch (error) {
-          console.error('Error marking message as read:', error);
+      if (unreadMessages.length > 0) {
+        for (const msg of unreadMessages) {
+          try {
+            await markMessageAsRead(msg.id);
+          } catch (error) {
+            console.error('Error marking message as read:', error);
+          }
         }
-      }
 
-      // Update local state
-      setMessages(prev => prev.map(msg =>
-        unreadMessages.some(unread => unread.id === msg.id)
-          ? { ...msg, read_at: new Date().toISOString() }
-          : msg
-      ));
+        // Update local state
+        setMessages(prev => prev.map(msg =>
+          unreadMessages.some(unread => unread.id === msg.id)
+            ? { ...msg, read_at: new Date().toISOString() }
+            : msg
+        ));
+
+        // Emit custom event to notify layout of message read
+        window.dispatchEvent(new CustomEvent('messagesRead', {
+          detail: { count: unreadMessages.length }
+        }));
+      }
     }, 500);
   };
 const handleSendMessage = async () => {
