@@ -502,6 +502,63 @@ export const subscribeToConversation = (
     .subscribe();
 };
 
+/** Recent photo attachments from messages received by the user. asRole: show convos where other participant is trainer (parent view) or parent (trainer view). */
+export const getRecentMessagePhotos = async (
+  userId: string,
+  asRole: 'parent' | 'trainer'
+): Promise<Array<{ file_url: string; file_name: string; created_at: string; sender_name?: string }>> => {
+  try {
+    const conversations = await getUserConversations(userId);
+    const otherRole = asRole === 'parent' ? 'trainer' : 'parent';
+    const conversationIds = conversations
+      .filter((c: any) => {
+        const participant = c.participants?.[0];
+        const other = participant?.users ?? participant;
+        return other?.role === otherRole;
+      })
+      .map((c: any) => c.id);
+
+    if (conversationIds.length === 0) return [];
+
+    const { data: messages, error } = await supabase
+      .from(MESSAGES_TABLE)
+      .select(`
+        id,
+        created_at,
+        sender_id,
+        sender:sender_id ( full_name ),
+        attachments:message_attachments ( id, file_url, file_name, file_type, created_at )
+      `)
+      .in('conversation_id', conversationIds)
+      .neq('sender_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error || !messages) return [];
+
+    const photos: Array<{ file_url: string; file_name: string; created_at: string; sender_name?: string }> = [];
+    for (const msg of messages as any[]) {
+      const attachments = msg.attachments || [];
+      const senderName = msg.sender?.full_name;
+      for (const att of attachments) {
+        if (att.file_type?.startsWith('image/') && att.file_url) {
+          photos.push({
+            file_url: att.file_url,
+            file_name: att.file_name || 'Image',
+            created_at: msg.created_at,
+            sender_name: senderName,
+          });
+          if (photos.length >= 6) return photos;
+        }
+      }
+    }
+    return photos;
+  } catch (err) {
+    console.error('Error in getRecentMessagePhotos:', err);
+    return [];
+  }
+};
+
 // Get unread message count for a user
 export const getUnreadMessageCount = async (userId: string): Promise<number> => {
   try {

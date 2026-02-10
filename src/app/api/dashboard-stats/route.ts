@@ -14,9 +14,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get current user with improved error handling
-    const user = await getServerUser();
-    
+    // Get current user from request (Bearer token or cookies)
+    const user = await getServerUser(request);
+
     if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user profile to check role
-    const supabaseClient = createSupabaseServerClient();
+    const supabaseClient = createSupabaseServerClient(request);
     const { data: userProfile, error: profileError } = await supabaseClient
       .from('users')
       .select('role')

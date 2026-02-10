@@ -106,6 +106,18 @@ html {
   font-family: inherit;
 }
 
+/* Ensure form controls are always readable (no white text on light background) */
+select.border,
+input[type="text"].border,
+input[type="search"].border,
+input[type="email"].border,
+input[type="number"].border,
+input[type="date"].border,
+input[type="datetime-local"].border {
+  color: #111827;
+  background-color: #fff;
+}
+
 /* Slogan font class using Reindeer Games */
 .slogan-font {
   font-family: "ReindeerGames", "ComicSansCustom", "Comic Sans MS", "Comic Sans", cursive, system-ui, sans-serif !important;

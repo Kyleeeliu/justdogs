@@ -43,13 +43,24 @@ async function getAuthenticatedUser(request: NextRequest) {
   return { ...authUser, role: role || 'parent' };
 }
 
+/** Create a Supabase client with service role to bypass RLS (use only after validating user server-side). */
+function getServiceRoleClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const supabase = createSupabaseServerClient(request);
+  // Use service role so we read from Supabase without RLS hiding rows (e.g. right after create)
+  const supabase = getServiceRoleClient() ?? createSupabaseServerClient(request);
 
   let query = supabase.from('bookings').select(`
     *,
@@ -65,22 +76,12 @@ export async function GET(request: NextRequest) {
   }
 
   const { data, error } = await query.order('start_time', { ascending: false });
-  
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  
-  return NextResponse.json(data);
-}
 
-/** Create a Supabase client with service role to bypass RLS (use only after validating user server-side). */
-function getServiceRoleClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return NextResponse.json(data ?? []);
 }
 
 export async function POST(request: NextRequest) {
@@ -176,24 +177,31 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const supabase = createSupabaseServerClient(request);
-
   if (user.role !== 'admin' && user.role !== 'trainer') {
     return NextResponse.json({ error: 'Unauthorized Access' }, { status: 403 });
   }
 
+  const supabase = getServiceRoleClient() ?? createSupabaseServerClient(request);
+
   try {
     const { id, ...updates } = await request.json();
+
+    if (!id) {
+      return NextResponse.json({ error: 'Booking id is required' }, { status: 400 });
+    }
 
     const { data, error } = await supabase
       .from('bookings')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
-    return NextResponse.json(data);
+    if (data == null) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, ...data });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

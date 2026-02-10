@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import Image from 'next/image';
 import {
   CalendarIcon,
   UserGroupIcon,
@@ -12,11 +13,12 @@ import {
   ExclamationTriangleIcon,
   SpeakerWaveIcon,
   XMarkIcon,
-  PlusIcon
+  PlusIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline';
 import { User, DashboardStats, TrainerStats, ParentStats, Message, Booking, BookingType, Dog } from '@/types';
 import { useRouter } from 'next/navigation';
-import { getMessagesByUser } from '@/lib/supabase/messages';
+import { getMessagesByUser, getRecentMessagePhotos } from '@/lib/supabase/messages';
 import { useAuth } from '@/hooks/useAuth';
 import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
 import { getDogsByOwner, getAllDogs } from '@/lib/supabase/dogs';
@@ -90,7 +92,7 @@ const TrainerScheduleCard = ({ trainerStats }: { trainerStats: TrainerStats }) =
         {!trainerStats?.upcoming_sessions?.length ? (
           <div className="text-center py-6">
             <p className="text-gray-600 mb-4">No sessions scheduled for today</p>
-            <Button size="sm" onClick={() => router.push('/bookings')} className="bg-[rgb(0_32_96)]">View All Bookings</Button>
+            <Button size="sm" onClick={() => router.push('/bookings-sessions')} className="bg-[rgb(0_32_96)]">View All Bookings</Button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -100,10 +102,119 @@ const TrainerScheduleCard = ({ trainerStats }: { trainerStats: TrainerStats }) =
                   <p className="font-medium">Dog Session - {session.booking_type.replace('_', ' ')}</p>
                   <p className="text-sm text-gray-600">{new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
-                <Button size="sm" onClick={() => router.push('/bookings')}>Details</Button>
+                <Button size="sm" onClick={() => router.push('/bookings-sessions')}>Details</Button>
               </div>
             ))}
           </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// Recent photos from messages (for owners and trainers, togglable)
+type PhotoViewAs = 'parent' | 'trainer';
+const RecentMessagePhotosCard = ({ userId, userRole }: { userId: string; userRole: string }) => {
+  const [photos, setPhotos] = useState<Array<{ file_url: string; file_name: string; created_at: string; sender_name?: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [viewAs, setViewAs] = useState<PhotoViewAs>(userRole === 'trainer' ? 'trainer' : 'parent');
+  const router = useRouter();
+
+  useEffect(() => {
+    if (userId && (userRole === 'parent' || userRole === 'trainer')) {
+      setLoading(true);
+      getRecentMessagePhotos(userId, viewAs)
+        .then(setPhotos)
+        .catch(() => setPhotos([]))
+        .finally(() => setLoading(false));
+    }
+  }, [userId, userRole, viewAs]);
+
+  const showToggle = userRole === 'parent' || userRole === 'trainer';
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <PhotoIcon className="h-5 w-5" />
+              Recent photos from messages
+            </CardTitle>
+            <CardDescription>Last 6 images sent to you in messages</CardDescription>
+          </div>
+          {showToggle && (
+            <div className="flex rounded-lg border border-gray-300 p-0.5 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setViewAs('parent')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewAs === 'parent' ? 'bg-[rgb(0_32_96)] text-white' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
+                As owner
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewAs('trainer')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewAs === 'trainer' ? 'bg-[rgb(0_32_96)] text-white' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
+                As trainer
+              </button>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(0_32_96)]" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => {
+              const photo = photos[i];
+              if (photo) {
+                return (
+                  <button
+                    key={`${photo.file_url}-${i}`}
+                    type="button"
+                    onClick={() => window.open(photo.file_url, '_blank')}
+                    className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 hover:ring-2 hover:ring-[rgb(0_32_96)] focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
+                  >
+                    <Image
+                      src={photo.file_url}
+                      alt={photo.file_name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                      unoptimized
+                    />
+                    {photo.sender_name && (
+                      <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs py-1 px-2 truncate">
+                        {photo.sender_name}
+                      </span>
+                    )}
+                  </button>
+                );
+              }
+              return (
+                <div
+                  key={`placeholder-${i}`}
+                  className="aspect-square rounded-lg border-2 border-dashed border-gray-300 bg-gray-50"
+                  aria-hidden
+                />
+              );
+            })}
+          </div>
+        )}
+        {(userRole === 'parent' || userRole === 'trainer') && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 w-full text-gray-900"
+            onClick={() => router.push('/messages')}
+          >
+            Open Messages
+          </Button>
         )}
       </CardContent>
     </Card>
@@ -208,7 +319,7 @@ const handleCreateBooking = async (bookingData: BookingFormData) => {
       alert('Booking created successfully!');
       setShowCreateModal(false);
       router.refresh();
-      router.push('/bookings');
+      router.push('/bookings-sessions');
     } else {
       throw new Error(result.error || result.message || 'Failed to create booking');
     }
@@ -267,6 +378,10 @@ if (loading) return <div className="flex items-center justify-center h-64"><div 
       {user.role === 'admin' && renderAdminDashboard()}
       {user.role === 'trainer' && renderTrainerDashboard()}
       {user.role === 'parent' && renderParentDashboard()}
+
+      {(user.role === 'parent' || user.role === 'trainer') && (
+        <RecentMessagePhotosCard userId={user.id} userRole={user.role} />
+      )}
 
       <CreateBookingModal
         isOpen={showCreateModal}

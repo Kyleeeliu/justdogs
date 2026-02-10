@@ -106,25 +106,43 @@ export default function BookingsSessionsPage() {
     loadBookings();
   }, [user, authLoading]);
 
-  // Load dogs and trainers when modal opens
-useEffect(() => {
-  const loadInitialData = async () => {
-    if (!user || authLoading) return;
-    
-    // Load trainers immediately (needed for assignment modal)
-    try {
-      const trainersData = await getUsersByRole('trainer');
-      setTrainers(trainersData);
-    } catch (error) {
-      console.error('Error loading trainers:', error);
-    }
-    
-    // Load bookings
-    await loadBookings();
-  };
-  
-  loadInitialData();
-}, [user, authLoading]);
+  // Load trainers and bookings on mount
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (!user || authLoading) return;
+
+      try {
+        const trainersData = await getUsersByRole('trainer');
+        setTrainers(trainersData);
+      } catch (error) {
+        console.error('Error loading trainers:', error);
+      }
+
+      await loadBookings();
+    };
+
+    loadInitialData();
+  }, [user, authLoading]);
+
+  // Load dogs (and refresh trainers) when create modal opens so dropdown is populated
+  useEffect(() => {
+    if (!showCreateModal || !user) return;
+
+    const loadModalData = async () => {
+      try {
+        const userDogs = user.role === 'parent'
+          ? await getDogsByOwner(user.id)
+          : await getAllDogs();
+        setDogs(userDogs);
+        const trainersData = await getUsersByRole('trainer');
+        setTrainers(trainersData);
+      } catch (error) {
+        console.error('Error loading create-modal data:', error);
+      }
+    };
+
+    loadModalData();
+  }, [showCreateModal, user]);
 
   // Create booking
   const handleCreateBooking = async (formData: BookingFormData) => {
