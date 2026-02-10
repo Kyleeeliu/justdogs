@@ -95,23 +95,6 @@ export const updateDog = async (
   return data as Dog;
 };
 /* =========================
-   SEARCH
-========================= */
-export const searchDogs = async (searchTerm: string): Promise<Dog[]> => {
-  const { data, error } = await supabase
-    .from(DOGS_TABLE)
-    .select('*')
-    .ilike('name', `%${searchTerm}%`)
-    .order('name', { ascending: true });
-
-  if (error) {
-    console.error('Error searching dogs:', error);
-    return [];
-  }
-
-  return (data ?? []) as Dog[];
-};
-/* =========================
    DELETE
 ========================= */
 export const deleteDog = async (id: string): Promise<boolean> => {
