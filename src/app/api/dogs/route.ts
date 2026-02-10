@@ -268,7 +268,8 @@ export async function GET(request: NextRequest) {
           }
         }
       } else if (role === 'parent') {
-        dogs = await getDogsByOwnerServer(supabase, authUser.id);
+        // Use service role when available so RLS doesn't hide rows (session client may not send JWT to PostgREST)
+        dogs = await getDogsByOwnerServer(supabaseAdmin || supabase, authUser.id);
       } else if (role === 'trainer') {
         dogs = await getAllDogsServer(supabaseAdmin || supabase);
       } else {

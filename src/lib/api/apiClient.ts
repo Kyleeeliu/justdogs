@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase/client';
 import { AuthRecovery } from '@/lib/auth/authRecovery';
 import { isRefreshTokenError } from '@/lib/auth/auth';
 
+<<<<<<< Updated upstream
 /**
  * Enhanced fetch wrapper that handles authentication errors automatically
  */
@@ -40,6 +41,30 @@ export async function authenticatedFetch(
     });
     
     // Check for auth errors in response
+=======
+import { supabase } from '@/lib/supabase/client';
+
+export async function authenticatedFetch(url: string, options: any = {}) {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    };
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+
+    const defaultOptions = {
+      ...options,
+      credentials: 'include' as RequestCredentials,
+      headers,
+    };
+
+    const response = await fetch(url, defaultOptions);
+
+>>>>>>> Stashed changes
     if (response.status === 401) {
       console.warn('Received 401 response, attempting token refresh');
       

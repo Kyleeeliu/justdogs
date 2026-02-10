@@ -112,6 +112,35 @@ export const deleteDog = async (id: string): Promise<boolean> => {
 };
 
 /* =========================
+   SEARCH
+========================= */
+/** Search dogs by name or breed; optional ownerId restricts to that owner (e.g. for parents). */
+export const searchDogs = async (
+  searchTerm: string,
+  ownerId?: string
+): Promise<Dog[]> => {
+  const term = searchTerm.trim();
+  if (!term) {
+    return ownerId ? getDogsByOwner(ownerId) : getAllDogs();
+  }
+  const escaped = term.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  const pattern = `%${escaped}%`;
+  let query = supabase
+    .from(DOGS_TABLE)
+    .select('*')
+    .or(`name.ilike.${pattern},breed.ilike.${pattern}`);
+  if (ownerId) {
+    query = query.eq('owner_id', ownerId);
+  }
+  const { data, error } = await query.order('name', { ascending: true });
+  if (error) {
+    console.error('Error searching dogs:', error);
+    return [];
+  }
+  return (data ?? []) as Dog[];
+};
+
+/* =========================
    READ (single + search)
 ========================= */
 export const getDogById = async (id: string): Promise<Dog | null> => {

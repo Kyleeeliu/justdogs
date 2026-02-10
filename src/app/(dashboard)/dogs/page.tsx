@@ -92,14 +92,14 @@ export default function DogsPage() {
       const data = await response.json();
 
       const dogsList = Array.isArray(data.dogs) ? data.dogs : [];
-      if (data.success) {
+      if (data.success === true || (dogsList.length >= 0 && Array.isArray(data.dogs))) {
         setDogs(dogsList);
         setFilteredDogs(dogsList);
         if (dogsList.length === 0 && !data.error) {
           console.log('Dogs loaded: 0 dogs (API returned success with empty array)');
         }
       } else {
-        if (data.error !== 'Authentication required') {
+        if (data.error && data.error !== 'Authentication required') {
           console.error('Error loading dogs:', data.error || data.details || 'Unknown error');
         }
         setDogs([]);
