@@ -44,92 +44,33 @@ async function getAuthenticatedUser(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  console.log('[API] ========== GET /api/bookings START ==========');
-  
   const user = await getAuthenticatedUser(request);
-  console.log('[API] Authenticated user:', {
-    id: user?.id,
-    email: user?.email,
-    role: user?.role
-  });
-  
   if (!user) {
-    console.log('[API] No user - returning 401');
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  // Use service role client to bypass RLS (we'll filter manually)
-  const supabase = getServiceRoleClient() ?? createSupabaseServerClient(request);
-  console.log('[API] Created Supabase client (service role)');
+  const supabase = createSupabaseServerClient(request);
 
-  // Build query
-  let query = supabase
-    .from('bookings')
-    .select('*');
+  let query = supabase.from('bookings').select(`
+    *,
+    dogs(name),
+    trainers:trainer_id(full_name),
+    parents:parent_id(full_name)
+  `);
 
-  console.log('[API] User role:', user.role);
-
-  // IMPORTANT: Filter by role on the SERVER side
   if (user.role === 'parent') {
-    console.log('[API] Parent - Filtering by parent_id:', user.id);
     query = query.eq('parent_id', user.id);
-    
-    // Additional safety check: also filter by dog ownership
-    // This ensures parents can only see bookings for their own dogs
-    const { data: userDogs } = await supabase
-      .from('dogs')
-      .select('id')
-      .eq('owner_id', user.id);
-    
-    if (userDogs && userDogs.length > 0) {
-      const dogIds = userDogs.map(dog => dog.id);
-      console.log('[API] Parent owns dogs:', dogIds);
-      query = query.in('dog_id', dogIds);
-    } else {
-      console.log('[API] Parent has no dogs - returning empty array');
-      return NextResponse.json([]);
-    }
   } else if (user.role === 'trainer') {
-    console.log('[API] Trainer - Filtering by trainer_id:', user.id);
     query = query.eq('trainer_id', user.id);
-  } else if (user.role === 'admin') {
-    console.log('[API] Admin - returning all bookings (no filter)');
-  } else {
-    // Unknown role - return empty
-    console.log('[API] Unknown role - returning empty array');
-    return NextResponse.json([]);
   }
 
-  console.log('[API] Executing query...');
   const { data, error } = await query.order('start_time', { ascending: false });
   
-  console.log('[API] Query complete');
-  console.log('[API] Data length:', data?.length);
-  console.log('[API] Error:', error);
-  
   if (error) {
-    console.error('[API] Supabase error details:', {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code
-    });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   
-  // Additional logging for parent users
-  if (user.role === 'parent' && data) {
-    console.log('[API] Parent bookings details:', data.map(booking => ({
-      id: booking.id,
-      dog_id: booking.dog_id,
-      parent_id: booking.parent_id,
-      status: booking.status
-    })));
-  }
-  
-  console.log('[API] Returning', data?.length || 0, 'bookings');
-  console.log('[API] ========== GET /api/bookings END ==========');
-  return NextResponse.json(data || []);
+  return NextResponse.json(data);
 }
 
 /** Create a Supabase client with service role to bypass RLS (use only after validating user server-side). */
@@ -235,8 +176,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  // Use service role client to bypass RLS
-  const supabase = getServiceRoleClient() ?? createSupabaseServerClient(request);
+  const supabase = createSupabaseServerClient(request);
 
   if (user.role !== 'admin' && user.role !== 'trainer') {
     return NextResponse.json({ error: 'Unauthorized Access' }, { status: 403 });
@@ -252,15 +192,9 @@ export async function PUT(request: NextRequest) {
       .select()
       .single();
 
-    if (error) {
-      console.error('[API] PUT Booking error:', error);
-      throw error;
-    }
-    
-    console.log('[API] Booking updated successfully:', data);
-    return NextResponse.json({ success: true, booking: data });
+    if (error) throw error;
+    return NextResponse.json(data);
   } catch (error: any) {
-    console.error('[API] PUT Booking Exception:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

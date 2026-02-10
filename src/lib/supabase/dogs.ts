@@ -10,8 +10,7 @@ export const DOGS_TABLE = 'dogs';
    CREATE
 ========================= */
 export const createDog = async (
-  // Updated type to allow owner_id to be passed in
-  dogData: Omit<Dog, 'id' | 'created_at' | 'updated_at'>
+  dogData: Omit<Dog, 'id' | 'created_at' | 'updated_at' | 'owner_id'>
 ): Promise<Dog> => {
   const {
     data: { user },
@@ -26,15 +25,14 @@ export const createDog = async (
     .from(DOGS_TABLE)
     .insert({
       ...dogData,
-      // Use provided owner_id if exists, otherwise fall back to current user
-      owner_id: dogData.owner_id || user.id,
+      owner_id: user.id,
     })
     .select()
     .single();
 
   if (error) {
-    console.error('Supabase DB Error:', error);
-    throw new Error(error.message);
+    console.error('Error creating dog:', error);
+    throw error;
   }
 
   return data as Dog;
@@ -47,12 +45,11 @@ export const getAllDogs = async (): Promise<Dog[]> => {
   const { data, error } = await supabase
     .from(DOGS_TABLE)
     .select('*')
-    .order('name', { ascending: true }); // Ordered by name for better dropdowns
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching dogs:', error);
-    // Only fallback if really necessary
-    return Array.isArray(localDogs.getAllDogs) ? localDogs.getAllDogs() : [];
+    return localDogs.getAllDogs();
   }
 
   return (data ?? []) as Dog[];
@@ -126,10 +123,38 @@ export const getDogById = async (id: string): Promise<Dog | null> => {
     .single();
 
   if (error) {
-    if (error.code === 'PGRST116') return null;
+    if (error.code === 'PGRST116') {
+      // no rows found
+      return null;
+    }
     console.error('Error fetching dog by ID:', error);
     return null;
   }
 
   return data as Dog;
+};
+
+export const searchDogs = async (
+  searchTerm: string,
+  ownerId?: string
+): Promise<Dog[]> => {
+  let query = supabase
+    .from(DOGS_TABLE)
+    .select('*')
+    .or(`name.ilike.%${searchTerm}%,breed.ilike.%${searchTerm}%`);
+
+  if (ownerId) {
+    query = query.eq('owner_id', ownerId);
+  }
+
+  const { data, error } = await query.order('created_at', {
+    ascending: false,
+  });
+
+  if (error) {
+    console.error('Error searching dogs:', error);
+    return [];
+  }
+
+  return (data ?? []) as Dog[];
 };

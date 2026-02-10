@@ -14,8 +14,33 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // TEMPORARY: Skip authentication for testing
-    console.log('Bypassing authentication for testing...');
+    // Get current user with improved error handling
+    const user = await getServerUser();
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Get user profile to check role
+    const supabaseClient = createSupabaseServerClient();
+    const { data: userProfile, error: profileError } = await supabaseClient
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      console.warn('User profile not found, defaulting to parent role:', profileError);
+      // Default to parent role if profile not found
+      return NextResponse.json({
+        total_dogs: 0,
+        upcoming_sessions: 0,
+        unread_messages: 0,
+      });
+    }
 
     // Use SERVICE ROLE for querying (bypasses RLS)
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
@@ -25,79 +50,111 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Assume admin role for testing
-    const userProfile = { role: 'admin' };
-
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    
-    console.log('Dashboard stats - Date range:', {
-      today: today.toISOString(),
-      startOfDay: startOfDay.toISOString(),
-      endOfDay: endOfDay.toISOString()
-    });
 
     try {
-      // For testing, always return admin stats
-      console.log('Fetching admin stats...');
-      
-      // Today's bookings
-      const { data: bookingsToday, error: bookingsError } = await supabaseAdmin
-        .from('bookings')
-        .select('id')
-        .gte('start_time', startOfDay.toISOString())
-        .lt('start_time', endOfDay.toISOString());
-      
-      console.log('Bookings today query:', {
-        count: bookingsToday?.length || 0,
-        error: bookingsError?.message,
-        startOfDay: startOfDay.toISOString(),
-        endOfDay: endOfDay.toISOString()
-      });
-      
-      // Total dogs
-      const { data: totalDogs, error: dogsError } = await supabaseAdmin
-        .from('dogs')
-        .select('id');
-      
-      console.log('Total dogs query:', {
-        count: totalDogs?.length || 0,
-        error: dogsError?.message
-      });
-      
-      // Total trainers
-      const { data: totalTrainers, error: trainersError } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('role', 'trainer');
-      
-      console.log('Total trainers query:', {
-        count: totalTrainers?.length || 0,
-        error: trainersError?.message
-      });
-      
-      // Pending bookings
-      const { data: pendingBookings, error: pendingError } = await supabaseAdmin
-        .from('bookings')
-        .select('id')
-        .eq('status', 'pending');
-      
-      console.log('Pending bookings query:', {
-        count: pendingBookings?.length || 0,
-        error: pendingError?.message
-      });
+      if (userProfile.role === 'admin') {
+        // Admin stats - all data
+        const [bookingsToday, totalDogs, totalTrainers, pendingBookings] = await Promise.all([
+          // Today's bookings
+          supabaseAdmin
+            .from('bookings')
+            .select('id')
+            .gte('start_time', startOfDay.toISOString())
+            .lt('start_time', endOfDay.toISOString()),
+          
+          // Total dogs
+          supabaseAdmin
+            .from('dogs')
+            .select('id'),
+          
+          // Total trainers
+          supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('role', 'trainer'),
+          
+          // Pending bookings
+          supabaseAdmin
+            .from('bookings')
+            .select('id')
+            .eq('status', 'pending')
+        ]);
 
-      const stats = {
-        total_bookings_today: bookingsToday?.length || 0,
-        total_dogs: totalDogs?.length || 0,
-        total_trainers: totalTrainers?.length || 0,
-        pending_bookings: pendingBookings?.length || 0,
-      };
+        return NextResponse.json({
+          total_bookings_today: bookingsToday.data?.length || 0,
+          total_dogs: totalDogs.data?.length || 0,
+          total_trainers: totalTrainers.data?.length || 0,
+          pending_bookings: pendingBookings.data?.length || 0,
+        });
 
-      console.log('Final admin stats:', stats);
+      } else if (userProfile.role === 'trainer') {
+        // Trainer stats - their data only
+        const [todaySessions, assignedDogs, upcomingSessions] = await Promise.all([
+          // Today's sessions for this trainer
+          supabaseAdmin
+            .from('bookings')
+            .select('id')
+            .eq('trainer_id', user.id)
+            .gte('start_time', startOfDay.toISOString())
+            .lt('start_time', endOfDay.toISOString()),
+          
+          // Dogs assigned to this trainer (unique dogs from bookings)
+          supabaseAdmin
+            .from('bookings')
+            .select('dog_id')
+            .eq('trainer_id', user.id),
+          
+          // Upcoming sessions
+          supabaseAdmin
+            .from('bookings')
+            .select(`
+              *,
+              dogs:dog_id (name)
+            `)
+            .eq('trainer_id', user.id)
+            .gte('start_time', new Date().toISOString())
+            .eq('status', 'confirmed')
+            .order('start_time', { ascending: true })
+            .limit(5)
+        ]);
 
-      return NextResponse.json(stats);
+        // Get unique dog count
+        const uniqueDogs = new Set(assignedDogs.data?.map(b => b.dog_id) || []);
+
+        return NextResponse.json({
+          today_sessions: todaySessions.data?.length || 0,
+          total_dogs_assigned: uniqueDogs.size,
+          unread_messages: 0, // TODO: Implement message counting
+          upcoming_sessions: upcomingSessions.data || [],
+        });
+
+      } else if (userProfile.role === 'parent') {
+        // Parent stats - their data only
+        const [userDogs, upcomingSessions] = await Promise.all([
+          // Dogs owned by this parent
+          supabaseAdmin
+            .from('dogs')
+            .select('id')
+            .eq('owner_id', user.id),
+          
+          // Upcoming sessions for their dogs
+          supabaseAdmin
+            .from('bookings')
+            .select('id')
+            .eq('parent_id', user.id)
+            .gte('start_time', new Date().toISOString())
+            .in('status', ['confirmed', 'pending'])
+        ]);
+
+        return NextResponse.json({
+          total_dogs: userDogs.data?.length || 0,
+          upcoming_sessions: upcomingSessions.data?.length || 0,
+          unread_messages: 0, // TODO: Implement message counting
+        });
+      }
     } catch (dbError) {
       console.warn('Database query failed, returning fallback stats:', dbError);
       // Return fallback stats based on role
