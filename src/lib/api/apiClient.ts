@@ -44,16 +44,38 @@ export async function authenticatedFetch(
 =======
 import { supabase } from '@/lib/supabase/client';
 
+import { supabase } from '@/lib/supabase/client';
+
 export async function authenticatedFetch(url: string, options: any = {}) {
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers || {}),
+<<<<<<< Updated upstream
     };
 
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
       headers['Authorization'] = `Bearer ${session.access_token}`;
+=======
+    };
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+
+    const defaultOptions = {
+      ...options,
+      credentials: 'include' as RequestCredentials,
+      headers,
+    };
+
+    const response = await fetch(url, defaultOptions);
+
+    if (response.status === 401) {
+      console.warn("API returned 401. Session might be expired.");
+>>>>>>> Stashed changes
     }
 
     const defaultOptions = {
