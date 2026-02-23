@@ -21,12 +21,12 @@ import {
 } from '@heroicons/react/24/outline';
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { name: 'Dogs', href: '/dogs', icon: UserGroupIcon },
-  { name: 'Bookings & Sessions', href: '/bookings-sessions', icon: CalendarIcon },
-  { name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon },
-  { name: 'News & Events', href: '/news', icon: NewspaperIcon },
-  { name: 'Profile', href: '/profile', icon: UserIcon },
+  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon, mobileLabel: 'Home' },
+  { name: 'Dogs', href: '/dogs', icon: UserGroupIcon, mobileLabel: 'Dogs' },
+  { name: 'Bookings & Sessions', href: '/bookings-sessions', icon: CalendarIcon, mobileLabel: 'Bookings' },
+  { name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon, mobileLabel: 'Messages' },
+  { name: 'News & Events', href: '/news', icon: NewspaperIcon, mobileLabel: 'News' },
+  { name: 'Profile', href: '/profile', icon: UserIcon, mobileLabel: 'Profile' },
 ];
 
 export default function DashboardLayout({
@@ -316,31 +316,32 @@ export default function DashboardLayout({
           </div>
         </main>
 
-        {/* Mobile bottom navigation */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 lg:hidden">
-          <nav className="flex justify-around">
+        {/* Mobile bottom navigation - compact so all 6 items fit on small screens */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 lg:hidden safe-area-pb">
+          <nav className="flex">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
               const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
+              const label = (item as { mobileLabel?: string }).mobileLabel ?? item.name;
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`flex flex-col items-center py-2 px-3 text-xs font-medium transition-colors relative ${
+                  className={`flex flex-1 min-w-0 flex-col items-center justify-center py-1.5 px-0.5 text-[10px] font-medium transition-colors relative ${
                     isActive
                       ? 'text-[rgb(0_32_96)]'
                       : 'text-gray-500 hover:text-[rgb(0_32_96)]'
                   }`}
                 >
-                  <div className="relative">
-                    <item.icon className="h-6 w-6 mb-1" />
+                  <div className="relative flex-shrink-0">
+                    <item.icon className="h-5 w-5 mb-0.5" />
                     {showBadge && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[16px] text-center leading-none">
+                      <span className="absolute -top-0.5 -right-1 bg-red-500 text-white text-[10px] rounded-full px-1 py-0 min-w-[14px] text-center leading-none">
                         {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                       </span>
                     )}
                   </div>
-                  <span className="truncate max-w-[60px]">{item.name}</span>
+                  <span className="truncate w-full text-center max-w-[52px]">{label}</span>
                 </Link>
               );
             })}

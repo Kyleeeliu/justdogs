@@ -34,7 +34,7 @@ async function getDogsByOwnerServer(supabase: any, ownerId: string): Promise<Dog
   return (data ?? []) as Dog[];
 }
 
-// Server-side function for creating dogs
+// Server-side function for creating dogs (only columns that exist in dogs table)
 async function createDogServer(
   supabase: any,
   dogData: {
@@ -44,29 +44,24 @@ async function createDogServer(
     weight: number | null;
     medical_notes: string | null;
     behavioral_notes: string | null;
-    vaccine_records: string | null;
-    preferences: string | null;
-    emergency_contact: any | null;
     owner_id: string;
   }
 ): Promise<Dog> {
   console.log('createDogServer: Inserting dog data:', dogData);
-  
+
+  const insertPayload: Record<string, unknown> = {
+    name: dogData.name,
+    breed: dogData.breed,
+    age: Number(dogData.age) || 0,
+    weight: dogData.weight != null ? Number(dogData.weight) : null,
+    medical_notes: dogData.medical_notes || null,
+    behavioral_notes: dogData.behavioral_notes || null,
+    owner_id: dogData.owner_id,
+  };
+
   const { data, error } = await supabase
     .from('dogs')
-    .insert({
-      name: dogData.name,
-      breed: dogData.breed,
-      age: dogData.age,
-      weight: dogData.weight,
-      medical_notes: dogData.medical_notes,
-      behavioral_notes: dogData.behavioral_notes,
-      vaccine_records: dogData.vaccine_records,
-      preferences: dogData.preferences,
-      emergency_contact: dogData.emergency_contact,
-      owner_id: dogData.owner_id,
-      // Let database handle created_at and updated_at with defaults
-    })
+    .insert(insertPayload)
     .select()
     .single();
 
@@ -393,16 +388,20 @@ export async function POST(request: NextRequest) {
       weight: weight ? (typeof weight === 'number' ? weight : parseFloat(weight)) : null,
       medical_notes: medical_notes || null,
       behavioral_notes: behavioral_notes || null,
-      vaccine_records: vaccine_records || null,
-      preferences: preferences || null,
-      emergency_contact: emergency_contact || null,
       owner_id: finalOwnerId
     };
 
     console.log('Creating dog with data:', dogData);
 
-    // Use server-side function instead of client-side createDog
-    const dog = await createDogServer(supabase, dogData);
+    // Use service role client for insert so RLS does not block (user already validated above)
+    const hasServiceKey = !!(process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const supabaseForInsert = hasServiceKey
+      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        })
+      : supabase;
+
+    const dog = await createDogServer(supabaseForInsert, dogData);
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,15 @@
 -- Migration for content management (services, team, gallery)
 -- Run this in your Supabase SQL Editor
 
+-- Ensure the updated_at trigger function exists (required by triggers below)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Create services table
 CREATE TABLE IF NOT EXISTS services (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
