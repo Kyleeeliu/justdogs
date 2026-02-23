@@ -225,6 +225,7 @@ export default function DogsPage() {
       } else {
         // Create new dog
         const createResponse = await authenticatedPost('/api/dogs', {
+          owner_id: user?.id,
           name: formData.name,
           breed: formData.breed,
           age: parseInt(formData.age) || 0,

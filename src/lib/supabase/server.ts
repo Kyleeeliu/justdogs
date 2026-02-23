@@ -43,32 +43,16 @@ export function createSupabaseServerClient(request?: NextRequest) {
 /**
  * Get authenticated user from server-side with error handling.
  * Pass request to read Authorization header when client sends Bearer token.
- */
-export async function getServerUser(request?: NextRequest) {
-  try {
-    if (request) {
-      const authHeader = request.headers.get('authorization')
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7)
-        const supabaseDirect = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        )
-        const { data: { user }, error } = await supabaseDirect.auth.getUser(token)
-        if (!error && user) return user
-      }
-    }
-    const supabase = createSupabaseServerClient(request)
-    const { data: { user }, error } = await supabase.auth.getUser()
-    if (error) {
-      console.error('Server auth error:', error)
-      return null
-    }
-    return user
-  } catch (error) {
-    console.error('Error getting server user:', error)
-    return null
+ */export async function getServerUser(request?: NextRequest) {
+  const supabase = createSupabaseServerClient(request);
+  
+  const { data: { user }, error } = await supabase.auth.getUser();
+  
+  if (error || !user) {
+    return null;
   }
+  
+  return user;
 }
 
 /**

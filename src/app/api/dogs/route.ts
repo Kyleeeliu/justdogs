@@ -44,6 +44,9 @@ async function createDogServer(
     weight: number | null;
     medical_notes: string | null;
     behavioral_notes: string | null;
+    vaccine_records: string | null;
+    preferences: string | null;
+    emergency_contact: any | null;
     owner_id: string;
   }
 ): Promise<Dog> {
@@ -58,6 +61,9 @@ async function createDogServer(
       weight: dogData.weight,
       medical_notes: dogData.medical_notes,
       behavioral_notes: dogData.behavioral_notes,
+      vaccine_records: dogData.vaccine_records,
+      preferences: dogData.preferences,
+      emergency_contact: dogData.emergency_contact,
       owner_id: dogData.owner_id,
       // Let database handle created_at and updated_at with defaults
     })
@@ -348,7 +354,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, breed, age, weight, medical_notes, behavioral_notes, owner_id } = body;
+    const {
+      name,
+      breed,
+      age,
+      weight,
+      medical_notes,
+      behavioral_notes,
+      vaccine_records,
+      preferences,
+      emergency_contact,
+      owner_id
+    } = body;
 
     // Validate required fields
     if (!name || !breed) {
@@ -376,6 +393,9 @@ export async function POST(request: NextRequest) {
       weight: weight ? (typeof weight === 'number' ? weight : parseFloat(weight)) : null,
       medical_notes: medical_notes || null,
       behavioral_notes: behavioral_notes || null,
+      vaccine_records: vaccine_records || null,
+      preferences: preferences || null,
+      emergency_contact: emergency_contact || null,
       owner_id: finalOwnerId
     };
 

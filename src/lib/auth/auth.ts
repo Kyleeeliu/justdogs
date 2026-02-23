@@ -49,30 +49,29 @@ export async function signIn(email: string, password: string) {
                 name: error.name,
             });
             
-            let userMessage = error.message || 'An error occurred during sign in';
+            let userMessage = 'Unable to sign in. Please try again.';
             
-            // Provide more specific error messages
+            // Provide clean, professional error messages
             if (error.message?.includes('Invalid login credentials') || error.status === 400) {
-                userMessage = 'Invalid email or password. Please check your credentials and try again.\n\n' +
-                    'If you just created an account, make sure:\n' +
-                    '1. You confirmed your email (if email confirmation is enabled)\n' +
-                    '2. You used the correct email and password\n' +
-                    '3. The user was created successfully in Supabase';
+                userMessage = 'The email or password you entered is incorrect. Please check your credentials and try again.';
             } else if (error.message?.includes('Email not confirmed')) {
-                userMessage = 'Please confirm your email address before signing in. Check your inbox for a confirmation email.';
+                userMessage = 'Please check your email and click the confirmation link before signing in.';
             } else if (error.message?.includes('Too many requests')) {
-                userMessage = 'Too many sign-in attempts. Please wait a few minutes and try again.';
+                userMessage = 'Too many sign-in attempts. Please wait a few minutes before trying again.';
             } else if (error.message?.includes('User not found')) {
-                userMessage = 'No account found with this email address. Please check your email or sign up for a new account.';
+                userMessage = 'No account found with this email address. Please check your email or create a new account.';
+            } else if (error.message?.includes('Network')) {
+                userMessage = 'Connection issue. Please check your internet connection and try again.';
+            } else if (error.message?.includes('timeout')) {
+                userMessage = 'Sign-in is taking longer than expected. Please try again.';
             }
             
-            // Log additional debugging info in development
+            // Log debugging info in development (without exposing sensitive data)
             if (process.env.NODE_ENV === 'development') {
-                console.error('Debug info:', {
-                    email: email.trim().toLowerCase(),
-                    supabaseUrl: supabaseUrl?.substring(0, 30) + '...',
+                console.error('Sign-in error details:', {
                     errorCode: error.status,
                     errorName: error.name,
+                    timestamp: new Date().toISOString(),
                 });
             }
             
@@ -91,11 +90,11 @@ export async function signIn(email: string, password: string) {
                 if (userProfile && userProfile.role === 'trainer' && userProfile.approval_status === 'pending') {
                     // Sign out the user immediately
                     await supabase.auth.signOut();
-                    throw new Error('Your trainer account is pending admin approval. Please wait for approval before signing in.');
+                    throw new Error('Your trainer account is awaiting approval. You will receive an email notification once approved.');
                 } else if (userProfile && userProfile.role === 'trainer' && userProfile.approval_status === 'rejected') {
                     // Sign out the user immediately
                     await supabase.auth.signOut();
-                    throw new Error('Your trainer account has been rejected. Please contact support for more information.');
+                    throw new Error('Your trainer application was not approved. Please contact our support team for assistance.');
                 }
             } catch (profileError) {
                 console.error('Error checking user approval status:', profileError);

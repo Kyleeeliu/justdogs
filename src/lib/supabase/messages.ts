@@ -502,63 +502,6 @@ export const subscribeToConversation = (
     .subscribe();
 };
 
-/** Recent photo attachments from messages received by the user. asRole: show convos where other participant is trainer (parent view) or parent (trainer view). */
-export const getRecentMessagePhotos = async (
-  userId: string,
-  asRole: 'parent' | 'trainer'
-): Promise<Array<{ file_url: string; file_name: string; created_at: string; sender_name?: string }>> => {
-  try {
-    const conversations = await getUserConversations(userId);
-    const otherRole = asRole === 'parent' ? 'trainer' : 'parent';
-    const conversationIds = conversations
-      .filter((c: any) => {
-        const participant = c.participants?.[0];
-        const other = participant?.users ?? participant;
-        return other?.role === otherRole;
-      })
-      .map((c: any) => c.id);
-
-    if (conversationIds.length === 0) return [];
-
-    const { data: messages, error } = await supabase
-      .from(MESSAGES_TABLE)
-      .select(`
-        id,
-        created_at,
-        sender_id,
-        sender:sender_id ( full_name ),
-        attachments:message_attachments ( id, file_url, file_name, file_type, created_at )
-      `)
-      .in('conversation_id', conversationIds)
-      .neq('sender_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (error || !messages) return [];
-
-    const photos: Array<{ file_url: string; file_name: string; created_at: string; sender_name?: string }> = [];
-    for (const msg of messages as any[]) {
-      const attachments = msg.attachments || [];
-      const senderName = msg.sender?.full_name;
-      for (const att of attachments) {
-        if (att.file_type?.startsWith('image/') && att.file_url) {
-          photos.push({
-            file_url: att.file_url,
-            file_name: att.file_name || 'Image',
-            created_at: msg.created_at,
-            sender_name: senderName,
-          });
-          if (photos.length >= 6) return photos;
-        }
-      }
-    }
-    return photos;
-  } catch (err) {
-    console.error('Error in getRecentMessagePhotos:', err);
-    return [];
-  }
-};
-
 // Get unread message count for a user
 export const getUnreadMessageCount = async (userId: string): Promise<number> => {
   try {
@@ -937,5 +880,98 @@ const isUserInConversation = async (userId: string, conversationId: string): Pro
     return !error && !!data;
   } catch (error) {
     return false;
+  }
+};
+
+// Get recent message photos for dashboard
+export const getRecentMessagePhotos = async (
+  userId: string,
+  viewAs: 'parent' | 'trainer' = 'parent'
+): Promise<Array<{ file_url: string; file_name: string; created_at: string; sender_name?: string }>> => {
+  try {
+    console.log('getRecentMessagePhotos: Fetching for user:', userId, 'viewAs:', viewAs);
+
+    // Get all conversations the user is part of
+    const { data: participantData } = await supabase
+      .from(PARTICIPANTS_TABLE)
+      .select('conversation_id')
+      .eq('user_id', userId);
+
+    const conversationIds = participantData?.map(p => p.conversation_id) || [];
+
+    if (conversationIds.length === 0) {
+      console.log('getRecentMessagePhotos: No conversations found');
+      return [];
+    }
+
+    // Get messages with attachments
+    const { data: messagesWithAttachments, error } = await supabase
+      .from(MESSAGES_TABLE)
+      .select(`
+        id,
+        sender_id,
+        created_at,
+        message_attachments (
+          id,
+          file_name,
+          file_url,
+          file_type,
+          created_at
+        ),
+        sender:sender_id (
+          full_name
+        )
+      `)
+      .in('conversation_id', conversationIds)
+      .not('message_attachments', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(20); // Get more messages to ensure we have enough image attachments
+
+    if (error) {
+      console.error('getRecentMessagePhotos: Error fetching messages:', error);
+      return [];
+    }
+
+    console.log('getRecentMessagePhotos: Found', messagesWithAttachments?.length || 0, 'messages with attachments');
+
+    // Filter and flatten attachments
+    const photos: Array<{ file_url: string; file_name: string; created_at: string; sender_name?: string }> = [];
+
+    messagesWithAttachments?.forEach(msg => {
+      // Determine if we should include this message based on viewAs
+      const isFromMe = msg.sender_id === userId;
+      
+      if (viewAs === 'parent' && isFromMe) {
+        // As parent, don't show photos I sent
+        return;
+      }
+      
+      if (viewAs === 'trainer' && !isFromMe) {
+        // As trainer, only show photos I sent (not photos I received)
+        return;
+      }
+
+      // Process attachments
+      const attachments = msg.message_attachments as any;
+      if (Array.isArray(attachments)) {
+        attachments.forEach((attachment: any) => {
+          // Only include image files
+          if (attachment.file_type?.startsWith('image/')) {
+            photos.push({
+              file_url: attachment.file_url,
+              file_name: attachment.file_name,
+              created_at: attachment.created_at || msg.created_at,
+              sender_name: (msg.sender as any)?.full_name
+            });
+          }
+        });
+      }
+    });
+
+    console.log('getRecentMessagePhotos: Returning', photos.length, 'photos');
+    return photos.slice(0, 6); // Return only the 6 most recent
+  } catch (error) {
+    console.error('getRecentMessagePhotos: Exception:', error);
+    return [];
   }
 };

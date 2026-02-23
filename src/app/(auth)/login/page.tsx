@@ -17,11 +17,19 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Handle email confirmation callback
+  // Handle URL messages (success/info messages)
   useEffect(() => {
     const message = searchParams.get('message');
+    const error = searchParams.get('error');
+    
     if (message === 'email_confirmed') {
       setSuccess('Email confirmed successfully! You can now sign in.');
+    } else if (message === 'session_expired') {
+      setError('Your session has expired. Please sign in again.');
+    }
+    
+    if (error === 'auth_error') {
+      setError('Authentication failed. Please try signing in again.');
     }
   }, [searchParams]);
 
@@ -37,28 +45,48 @@ function LoginForm() {
     }, 30000); // 30 second timeout
 
     try {
-      console.log('Login page: Attempting sign in for:', email);
       const result = await signIn(email, password);
-      console.log('Login page: Sign in successful:', result);
-      
       clearTimeout(timeoutId);
       
       if (result && result.user) {
-        console.log('Login page: User authenticated:', result.user);
+        // Show success message briefly before redirect
+        setSuccess('Welcome back! Redirecting to your dashboard...');
         
-        // Redirect immediately - useAuth hook will handle session verification
-        console.log('Login page: Redirecting to dashboard');
-        router.push('/dashboard');
-        // Don't set loading to false here - let the redirect happen
+        // Small delay to show success message
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1000);
       } else {
-        console.error('Login page: No user data received');
-        setError('Login failed - no user data received');
+        setError('Unable to sign in. Please check your credentials and try again.');
         setLoading(false);
       }
     } catch (err) {
       clearTimeout(timeoutId);
-      console.error('Login page: Sign in error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred during sign in');
+      
+      // Clean up error messages - remove technical details
+      let cleanError = 'Unable to sign in. Please try again.';
+      
+      if (err instanceof Error) {
+        const errorMessage = err.message.toLowerCase();
+        
+        // Map technical errors to user-friendly messages
+        if (errorMessage.includes('invalid login credentials') ||
+            errorMessage.includes('email or password')) {
+          cleanError = err.message; // These are already user-friendly
+        } else if (errorMessage.includes('network') ||
+                   errorMessage.includes('connection')) {
+          cleanError = 'Connection issue. Please check your internet and try again.';
+        } else if (errorMessage.includes('timeout')) {
+          cleanError = 'Request timed out. Please try again.';
+        } else if (errorMessage.includes('trainer account')) {
+          cleanError = err.message; // Trainer approval messages are already clean
+        } else {
+          // For any other technical errors, use the clean message from auth.ts
+          cleanError = err.message;
+        }
+      }
+      
+      setError(cleanError);
       setLoading(false);
     }
   };
@@ -74,13 +102,23 @@ function LoginForm() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
-              {error}
+            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm font-medium shadow-sm">
+              <div className="flex items-center">
+                <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <span>{error}</span>
+              </div>
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md text-sm">
-              {success}
+            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm font-medium shadow-sm">
+              <div className="flex items-center">
+                <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>{success}</span>
+              </div>
             </div>
           )}
           
