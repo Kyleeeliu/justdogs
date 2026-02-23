@@ -1,15 +1,20 @@
 import { supabase } from '@/lib/supabase/client';
+import { AuthRecovery } from '@/lib/auth/authRecovery';
 
 export async function authenticatedFetch(url: string, options: any = {}) {
   try {
     // Get current session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
+
     if (sessionError) {
       console.error('Session error in authenticatedFetch:', sessionError);
+      if (AuthRecovery.shouldRecover(sessionError)) {
+        await AuthRecovery.clearAndRedirect();
+        throw new Error('Session expired');
+      }
       throw sessionError;
     }
-    
+
     if (!session) {
       throw new Error('No active session');
     }
@@ -32,31 +37,54 @@ export async function authenticatedFetch(url: string, options: any = {}) {
     // Handle 401 - try to refresh token
     if (response.status === 401) {
       console.warn("API returned 401. Attempting to refresh session...");
-      
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      
-      if (refreshError || !refreshData.session) {
-        console.error('Token refresh failed:', refreshError);
-        throw new Error('Session expired, please log in again');
+
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+        if (refreshError) {
+          if (AuthRecovery.shouldRecover(refreshError)) {
+            await AuthRecovery.clearAndRedirect();
+            throw new Error('Session expired');
+          }
+          console.error('Token refresh failed:', refreshError);
+          throw new Error('Session expired, please log in again');
+        }
+
+        if (!refreshData.session) {
+          throw new Error('Session expired, please log in again');
+        }
+
+        // Retry with new token
+        const retryHeaders = {
+          ...headers,
+          'Authorization': `Bearer ${refreshData.session.access_token}`,
+        };
+
+        const retryResponse = await fetch(url, {
+          ...options,
+          credentials: 'include' as RequestCredentials,
+          headers: retryHeaders,
+        });
+
+        if (retryResponse.status === 401) {
+          await AuthRecovery.clearAndRedirect();
+          throw new Error('Session expired');
+        }
+        return retryResponse;
+      } catch (refreshErr: any) {
+        if (AuthRecovery.shouldRecover(refreshErr)) {
+          await AuthRecovery.clearAndRedirect();
+        }
+        throw refreshErr;
       }
-      
-      // Retry with new token
-      const retryHeaders = {
-        ...headers,
-        'Authorization': `Bearer ${refreshData.session.access_token}`,
-      };
-      
-      return await fetch(url, {
-        ...options,
-        credentials: 'include' as RequestCredentials,
-        headers: retryHeaders,
-      });
     }
 
     return response;
-    
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in authenticatedFetch:', error);
+    if (AuthRecovery.shouldRecover(error)) {
+      await AuthRecovery.clearAndRedirect();
+    }
     throw error;
   }
 }

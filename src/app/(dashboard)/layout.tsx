@@ -161,7 +161,7 @@ export default function DashboardLayout({
               <XMarkIcon className="h-6 w-6" />
             </Button>
           </div>
-          <nav className="flex-1 space-y-1 px-3 py-4">
+          <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
               const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
@@ -186,8 +186,16 @@ export default function DashboardLayout({
                 </Link>
               );
             })}
+            <button
+              type="button"
+              onClick={() => { setSidebarOpen(false); handleSignOut(); }}
+              className="group flex w-full items-center px-3 py-3 text-base font-medium rounded-lg text-gray-600 hover:bg-[rgb(0_32_96)] hover:bg-opacity-10 hover:text-[rgb(0_32_96)] transition-colors"
+            >
+              <ArrowRightOnRectangleIcon className="mr-3 h-6 w-6" />
+              Sign Out
+            </button>
           </nav>
-          <div className="border-t border-gray-200 p-4">
+          <div className="border-t border-gray-200 p-4 shrink-0">
             <div className="flex items-center mb-4">
               <div className="h-10 w-10 rounded-full bg-[rgb(0_32_96)] flex items-center justify-center">
                 <span className="text-base font-medium text-white">
