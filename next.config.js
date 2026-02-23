@@ -6,10 +6,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true, // ✅ Skip TS errors (like "Unexpected any")
   },
-  // Font optimization for consistent loading across devices
-  experimental: {
-    optimizeFonts: true,
-  },
   // Ensure static assets (including fonts) are properly served
   assetPrefix: process.env.NODE_ENV === 'production' ? '' : '',
   // Headers for better font caching and loading
