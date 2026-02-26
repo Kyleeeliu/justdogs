@@ -26,6 +26,8 @@ function LoginForm() {
       setSuccess('Email confirmed successfully! You can now sign in.');
     } else if (message === 'session_expired') {
       setError('Your session has expired. Please sign in again.');
+    } else if (message === 'password_reset') {
+      setSuccess('Password reset successful! You can now sign in with your new password.');
     }
     
     if (error === 'auth_error') {
@@ -154,7 +156,7 @@ function LoginForm() {
         
         <div className="mt-6 text-center space-y-2">
           <Link
-            href="/reset-password"
+            href="/forgot-password"
             className="text-sm text-[rgb(0_32_96)] hover:text-[rgb(0_24_72)] hover:underline"
           >
             Forgot your password?

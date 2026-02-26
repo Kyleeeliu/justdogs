@@ -43,37 +43,38 @@ export async function signIn(email: string, password: string) {
         });
 
         if (error) {
-            console.error('Supabase signin error:', {
-                message: error.message,
-                status: error.status,
-                name: error.name,
-            });
-            
+            // Define user-friendly error messages
             let userMessage = 'Unable to sign in. Please try again.';
             
             // Provide clean, professional error messages
             if (error.message?.includes('Invalid login credentials') || error.status === 400) {
                 userMessage = 'The email or password you entered is incorrect. Please check your credentials and try again.';
+                // Don't log this - it's just a user typo
+                throw new Error(userMessage);
             } else if (error.message?.includes('Email not confirmed')) {
                 userMessage = 'Please check your email and click the confirmation link before signing in.';
+                // Don't log this - it's expected
+                throw new Error(userMessage);
             } else if (error.message?.includes('Too many requests')) {
                 userMessage = 'Too many sign-in attempts. Please wait a few minutes before trying again.';
+                // Don't log this - it's expected rate limiting
+                throw new Error(userMessage);
             } else if (error.message?.includes('User not found')) {
                 userMessage = 'No account found with this email address. Please check your email or create a new account.';
+                // Don't log this - it's expected
+                throw new Error(userMessage);
             } else if (error.message?.includes('Network')) {
                 userMessage = 'Connection issue. Please check your internet connection and try again.';
             } else if (error.message?.includes('timeout')) {
                 userMessage = 'Sign-in is taking longer than expected. Please try again.';
             }
             
-            // Log debugging info in development (without exposing sensitive data)
-            if (process.env.NODE_ENV === 'development') {
-                console.error('Sign-in error details:', {
-                    errorCode: error.status,
-                    errorName: error.name,
-                    timestamp: new Date().toISOString(),
-                });
-            }
+            // Only log unexpected errors
+            console.error('Unexpected signin error:', {
+                message: error.message,
+                status: error.status,
+                name: error.name,
+            });
             
             throw new Error(userMessage);
         }
@@ -113,37 +114,38 @@ export async function signIn(email: string, password: string) {
         console.log('Sign in successful:', data.user.email);
         return data;
     } catch (error) {
-        console.error('Sign in error:', error);
+        // Don't re-log expected errors that we already handled above
+        // Just re-throw them for the UI to display
         throw error;
     }
 }
 
 export async function signUp(email: string, password: string, fullName: string, role: UserRole) {
-    console.log('SignUp attempt:', { email, fullName, role });
-    
-    try {
-        // Setup email redirect URL
-        const redirectUrl = typeof window !== 'undefined' 
-          ? `${window.location.origin}/login?message=email_confirmed`
-          : undefined;
+    console.log('SignUp attempt:', { email, fullName, role });
+    
+    try {
+        // Setup email redirect URL
+        const redirectUrl = typeof window !== 'undefined' 
+          ? `${window.location.origin}/login?message=email_confirmed`
+          : undefined;
 
-        // 1. Call Supabase Auth to create the user
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: {
-                    full_name: fullName, // Passed to user metadata
-                    role: role,           // Passed to user metadata
-                },
-                ...(redirectUrl && { emailRedirectTo: redirectUrl }),
-            },
-        });
+        // 1. Call Supabase Auth to create the user
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    full_name: fullName, // Passed to user metadata
+                    role: role,           // Passed to user metadata
+                },
+                ...(redirectUrl && { emailRedirectTo: redirectUrl }),
+            },
+        });
 
-        if (error) {
-            console.error('Supabase signup error:', error);
-            throw new Error(error.message);
-        }
+        if (error) {
+            console.error('Supabase signup error:', error);
+            throw new Error(error.message);
+        }
 
         console.log('Supabase signup successful:', data);
         
@@ -197,31 +199,31 @@ export async function signUp(email: string, password: string, fullName: string, 
                 throw profileError;
             }
         }
-        
-        // 3. Handle different flows based on user role
-        if (role === 'trainer') {
-            console.log('Trainer registration - requires admin approval');
-            return {
-                user: data.user,
-                session: null,
-                message: 'Trainer account created and pending admin approval. Please check your email to confirm your account.'
-            };
-        } else if (role === 'parent') {
-            if (data.user && data.session) {
-                console.log('Dog parent automatically signed in');
-                return data;
-            } else if (data.user && !data.session) {
-                console.log('Dog parent email confirmation required');
-                return {
-                    user: data.user,
-                    session: null,
-                    message: 'Please check your email to confirm your account before signing in.'
-                };
-            }
-        }
-        
-        return data;
-        
+        
+        // 3. Handle different flows based on user role
+        if (role === 'trainer') {
+            console.log('Trainer registration - requires admin approval');
+            return {
+                user: data.user,
+                session: null,
+                message: 'Trainer account created and pending admin approval. Please check your email to confirm your account.'
+            };
+        } else if (role === 'parent') {
+            if (data.user && data.session) {
+                console.log('Dog parent automatically signed in');
+                return data;
+            } else if (data.user && !data.session) {
+                console.log('Dog parent email confirmation required');
+                return {
+                    user: data.user,
+                    session: null,
+                    message: 'Please check your email to confirm your account before signing in.'
+                };
+            }
+        }
+        
+        return data;
+        
 } catch (error) {
     // Log the error in multiple ways to ensure we capture all information
     console.error('Error in signUp - Raw error:', error);
@@ -245,12 +247,12 @@ export async function signUp(email: string, password: string, fullName: string, 
 }
 
 export async function signOut() {
-    console.log('SignOut called');
-    
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-        throw new Error(error.message);
-    }
+    console.log('SignOut called');
+    
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+        throw new Error(error.message);
+    }
 }
 
 // --- Functions using the Server Client (FIXED) ---
@@ -335,73 +337,73 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 export async function updateUserProfile(userId: string, updates: Partial<User>): Promise<User> {
-    console.log('updateUserProfile called:', { userId, updates });
-    
-    const { data, error } = await supabase
-      .from('users')
-      .update({
-        full_name: updates.full_name,
-        phone: updates.phone,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId)
-      .select()
-      .single();
+    console.log('updateUserProfile called:', { userId, updates });
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        full_name: updates.full_name,
+        phone: updates.phone,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single();
 
-    if (error) {
-        console.error('Supabase profile update error:', error);
-        throw new Error('Failed to update profile');
-    }
+    if (error) {
+        console.error('Supabase profile update error:', error);
+        throw new Error('Failed to update profile');
+    }
 
-    console.log('Updated Supabase user:', data);
-    return data as User;
+    console.log('Updated Supabase user:', data);
+    return data as User;
 }
 
 // ... (Rest of the utility functions remain the same)
 
 export function hasPermission(userRole: UserRole, requiredRole: UserRole): boolean {
-    const roleHierarchy: Record<UserRole, number> = {
-      parent: 1,
-      trainer: 2,
-      behaviorist: 2,
-      admin: 3,
-    };
+    const roleHierarchy: Record<UserRole, number> = {
+      parent: 1,
+      trainer: 2,
+      behaviorist: 2,
+      admin: 3,
+    };
 
-    return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
+    return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
 }
 
 export function canAccessResource(
-    userRole: UserRole,
-    resourceOwnerId: string,
-    currentUserId: string
+    userRole: UserRole,
+    resourceOwnerId: string,
+    currentUserId: string
 ): boolean {
-    // Admins can access everything
-    if (userRole === 'admin') return true;
-    
-    // Users can access their own resources
-    if (resourceOwnerId === currentUserId) return true;
-    
-    // Trainers can access resources related to their bookings
-    if (userRole === 'trainer') {
-        return false;
-    }
-    
-    return false;
+    // Admins can access everything
+    if (userRole === 'admin') return true;
+    
+    // Users can access their own resources
+    if (resourceOwnerId === currentUserId) return true;
+    
+    // Trainers can access resources related to their bookings
+    if (userRole === 'trainer') {
+        return false;
+    }
+    
+    return false;
 }
 
 export async function resetPassword(email: string) {
-    // Check if window is defined (client-side only)
-    const redirectUrl = typeof window !== 'undefined'
-      ? `${window.location.origin}/reset-password`
-      : 'http://localhost:3000/reset-password'; // fallback for SSR
+    // Check if window is defined (client-side only)
+    const redirectUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/reset-password`
+      : 'http://localhost:3000/reset-password'; // fallback for SSR
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectUrl,
-    });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectUrl,
+    });
 
-    if (error) {
-        throw new Error(error.message);
-    }
+    if (error) {
+        throw new Error(error.message);
+    }
 }
 
 export async function updatePassword(newPassword: string) {
