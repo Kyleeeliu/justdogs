@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createSupabaseServerClient, getServerUser } from '@/lib/supabase/server';
+import { getServerUser } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
   try {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
+    console.log('[Dashboard Stats] Starting request');
+    console.log('[Dashboard Stats] Service key exists:', !!serviceKey);
+    console.log('[Dashboard Stats] Supabase URL exists:', !!supabaseUrl);
+
     if (!supabaseUrl || !serviceKey) {
+      console.error('[Dashboard Stats] Missing environment variables');
       return NextResponse.json(
         { error: 'Server not configured' },
         { status: 500 }
@@ -18,31 +23,16 @@ export async function GET(request: NextRequest) {
     const user = await getServerUser(request);
 
     if (!user) {
+      console.error('[Dashboard Stats] No authenticated user');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Get user profile to check role
-    const supabaseClient = createSupabaseServerClient(request);
-    const { data: userProfile, error: profileError } = await supabaseClient
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    console.log('[Dashboard Stats] User authenticated:', user.id);
 
-    if (profileError || !userProfile) {
-      console.warn('User profile not found, defaulting to parent role:', profileError);
-      // Default to parent role if profile not found
-      return NextResponse.json({
-        total_dogs: 0,
-        upcoming_sessions: 0,
-        unread_messages: 0,
-      });
-    }
-
-    // Use SERVICE ROLE for querying (bypasses RLS)
+    // Use SERVICE ROLE for all queries (bypasses RLS reliably)
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: {
         autoRefreshToken: false,
@@ -50,70 +40,119 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Get user profile to check role using service role (bypasses RLS cookie issues)
+    const { data: userProfile, error: profileError } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    console.log('[Dashboard Stats] User profile:', userProfile);
+    console.log('[Dashboard Stats] Profile error:', profileError);
+
+    if (profileError || !userProfile) {
+      console.warn('[Dashboard Stats] User profile not found:', profileError);
+      return NextResponse.json(
+        { error: 'User profile not found' },
+        { status: 404 }
+      );
+    }
+
+    console.log('[Dashboard Stats] User role:', userProfile.role);
+
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
 
+    console.log('[Dashboard Stats] Date range:', {
+      start: startOfDay.toISOString(),
+      end: endOfDay.toISOString()
+    });
+
     try {
       if (userProfile.role === 'admin') {
-        // Admin stats - all data
-        const [bookingsToday, totalDogs, totalTrainers, pendingBookings] = await Promise.all([
+        console.log('[Dashboard Stats] Fetching admin stats...');
+
+        // Run all admin stat queries in parallel
+        const [bookingsToday, totalDogs, totalTrainers, pendingStatus, pendingNoTrainer] = await Promise.all([
           // Today's bookings
           supabaseAdmin
             .from('bookings')
-            .select('id')
+            .select('*', { count: 'exact', head: true })
             .gte('start_time', startOfDay.toISOString())
             .lt('start_time', endOfDay.toISOString()),
-          
+
           // Total dogs
           supabaseAdmin
             .from('dogs')
-            .select('id'),
-          
-          // Total trainers
+            .select('*', { count: 'exact', head: true }),
+
+          // Active trainers: approved OR null (backward-compat with pre-approval accounts)
           supabaseAdmin
             .from('users')
-            .select('id')
-            .eq('role', 'trainer'),
-          
-          // Pending bookings
+            .select('*', { count: 'exact', head: true })
+            .eq('role', 'trainer')
+            .or('approval_status.eq.approved,approval_status.is.null'),
+
+          // Pending bookings with status = 'pending'
           supabaseAdmin
             .from('bookings')
-            .select('id')
-            .eq('status', 'pending')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending'),
+
+          // Confirmed bookings with no trainer assigned yet
+          supabaseAdmin
+            .from('bookings')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'confirmed')
+            .is('trainer_id', null),
         ]);
 
-        return NextResponse.json({
-          total_bookings_today: bookingsToday.data?.length || 0,
-          total_dogs: totalDogs.data?.length || 0,
-          total_trainers: totalTrainers.data?.length || 0,
-          pending_bookings: pendingBookings.data?.length || 0,
+        const pendingCount = (pendingStatus.count ?? 0) + (pendingNoTrainer.count ?? 0);
+
+        console.log('[Dashboard Stats] Admin results:', {
+          bookingsToday: bookingsToday.count,
+          bookingsTodayError: bookingsToday.error?.message,
+          totalDogs: totalDogs.count,
+          totalDogsError: totalDogs.error?.message,
+          totalTrainers: totalTrainers.count,
+          totalTrainersError: totalTrainers.error?.message,
+          pendingCount,
         });
 
+        const stats = {
+          total_bookings_today: bookingsToday.count ?? 0,
+          total_dogs: totalDogs.count ?? 0,
+          total_trainers: totalTrainers.count ?? 0,
+          pending_bookings: pendingCount,
+        };
+
+        console.log('[Dashboard Stats] Returning admin stats:', stats);
+        return NextResponse.json(stats);
+
       } else if (userProfile.role === 'trainer') {
-        // Trainer stats - their data only
+        console.log('[Dashboard Stats] Fetching trainer stats for:', user.id);
+
         const [todaySessions, assignedDogs, upcomingSessions] = await Promise.all([
           // Today's sessions for this trainer
           supabaseAdmin
             .from('bookings')
-            .select('id')
+            .select('*', { count: 'exact', head: true })
             .eq('trainer_id', user.id)
             .gte('start_time', startOfDay.toISOString())
             .lt('start_time', endOfDay.toISOString()),
-          
-          // Dogs assigned to this trainer (unique dogs from bookings)
+
+          // Unique dogs assigned to this trainer
           supabaseAdmin
             .from('bookings')
             .select('dog_id')
-            .eq('trainer_id', user.id),
-          
-          // Upcoming sessions
+            .eq('trainer_id', user.id)
+            .not('dog_id', 'is', null),
+
+          // Upcoming confirmed sessions
           supabaseAdmin
             .from('bookings')
-            .select(`
-              *,
-              dogs:dog_id (name)
-            `)
+            .select('*')
             .eq('trainer_id', user.id)
             .gte('start_time', new Date().toISOString())
             .eq('status', 'confirmed')
@@ -121,42 +160,53 @@ export async function GET(request: NextRequest) {
             .limit(5)
         ]);
 
-        // Get unique dog count
-        const uniqueDogs = new Set(assignedDogs.data?.map(b => b.dog_id) || []);
+        const uniqueDogs = new Set((assignedDogs.data ?? []).map((b: any) => b.dog_id));
 
-        return NextResponse.json({
-          today_sessions: todaySessions.data?.length || 0,
+        const stats = {
+          today_sessions: todaySessions.count ?? 0,
           total_dogs_assigned: uniqueDogs.size,
-          unread_messages: 0, // TODO: Implement message counting
-          upcoming_sessions: upcomingSessions.data || [],
-        });
+          unread_messages: 0,
+          upcoming_sessions: upcomingSessions.data ?? [],
+        };
+
+        console.log('[Dashboard Stats] Returning trainer stats:', stats);
+        return NextResponse.json(stats);
 
       } else if (userProfile.role === 'parent') {
-        // Parent stats - their data only
+        console.log('[Dashboard Stats] Fetching parent stats for:', user.id);
+
         const [userDogs, upcomingSessions] = await Promise.all([
           // Dogs owned by this parent
           supabaseAdmin
             .from('dogs')
-            .select('id')
+            .select('*', { count: 'exact', head: true })
             .eq('owner_id', user.id),
-          
-          // Upcoming sessions for their dogs
+
+          // Upcoming sessions for this parent
           supabaseAdmin
             .from('bookings')
-            .select('id')
+            .select('*', { count: 'exact', head: true })
             .eq('parent_id', user.id)
             .gte('start_time', new Date().toISOString())
             .in('status', ['confirmed', 'pending'])
         ]);
 
-        return NextResponse.json({
-          total_dogs: userDogs.data?.length || 0,
-          upcoming_sessions: upcomingSessions.data?.length || 0,
-          unread_messages: 0, // TODO: Implement message counting
-        });
+        const stats = {
+          total_dogs: userDogs.count ?? 0,
+          upcoming_sessions: upcomingSessions.count ?? 0,
+          unread_messages: 0,
+        };
+
+        console.log('[Dashboard Stats] Returning parent stats:', stats);
+        return NextResponse.json(stats);
       }
     } catch (dbError) {
-      console.warn('Database query failed, returning fallback stats:', dbError);
+      console.error('[Dashboard Stats] Database query failed:', dbError);
+      console.error('[Dashboard Stats] Error details:', {
+        message: dbError instanceof Error ? dbError.message : 'Unknown',
+        stack: dbError instanceof Error ? dbError.stack : undefined,
+      });
+      
       // Return fallback stats based on role
       if (userProfile.role === 'admin') {
         return NextResponse.json({
@@ -181,10 +231,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    console.log('[Dashboard Stats] Invalid role:', userProfile.role);
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
 
   } catch (err) {
-    console.error('Unexpected error fetching dashboard stats:', err);
+    console.error('[Dashboard Stats] Unexpected error:', err);
+    console.error('[Dashboard Stats] Error details:', {
+      message: err instanceof Error ? err.message : 'Unknown',
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

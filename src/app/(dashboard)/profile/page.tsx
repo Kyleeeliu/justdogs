@@ -14,7 +14,8 @@ import {
   XMarkIcon,
   CameraIcon
 } from '@heroicons/react/24/outline';
-import { getCurrentUser, updateUserProfile } from '@/lib/auth/auth';
+import { getCurrentUser } from '@/lib/auth/auth';
+import { authenticatedPut } from '@/lib/api/apiClient';
 import { User } from '@/types';
 
 export default function ProfilePage() {
@@ -52,20 +53,30 @@ export default function ProfilePage() {
     loadUser();
   }, []);
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSave = async () => {
     if (!user) return;
 
     setSaving(true);
+    setSaveError(null);
     try {
-      const updatedUser = await updateUserProfile(user.id, {
+      const response = await authenticatedPut('/api/profile', {
         full_name: formData.full_name,
-        phone: formData.phone
+        phone: formData.phone,
       });
-      
-      setUser(updatedUser);
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to save changes');
+      }
+
+      setUser(result.user);
       setEditing(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating profile:', error);
+      setSaveError(error.message || 'Failed to save changes');
     } finally {
       setSaving(false);
     }
@@ -233,7 +244,11 @@ export default function ProfilePage() {
 
               {/* Action Buttons */}
               {editing && (
-                <div className="flex gap-2 pt-4">
+                <div className="flex flex-col gap-3 pt-4">
+                  {saveError && (
+                    <p className="text-sm text-red-600">{saveError}</p>
+                  )}
+                <div className="flex gap-2">
                   <Button onClick={handleSave} disabled={saving} className="flex items-center gap-2">
                     {saving ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -246,6 +261,7 @@ export default function ProfilePage() {
                     <XMarkIcon className="h-4 w-4 mr-2" />
                     Cancel
                   </Button>
+                </div>
                 </div>
               )}
             </CardContent>

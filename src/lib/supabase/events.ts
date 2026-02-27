@@ -24,6 +24,16 @@ export interface EventItem {
 
 const EVENTS_TABLE = 'events';
 
+// Check if an error means the table doesn't exist yet
+function isTableMissingError(error: any): boolean {
+  return (
+    error?.code === '42P01' ||
+    error?.message?.includes('does not exist') ||
+    error?.message?.includes('relation') ||
+    error?.details?.includes('does not exist')
+  );
+}
+
 // Get all published events (public access)
 export const getEvents = async (): Promise<EventItem[]> => {
   try {
@@ -34,7 +44,9 @@ export const getEvents = async (): Promise<EventItem[]> => {
       .order('event_date', { ascending: true });
 
     if (error) {
-      console.error('Error fetching events:', error);
+      if (!isTableMissingError(error)) {
+        console.error('Error fetching events:', error.message || JSON.stringify(error));
+      }
       return [];
     }
 
@@ -74,8 +86,10 @@ export const getAllEvents = async (): Promise<EventItem[]> => {
       .order('event_date', { ascending: true });
 
     if (error) {
-      console.error('Error fetching all events:', error);
-      throw error;
+      if (!isTableMissingError(error)) {
+        console.error('Error fetching all events:', error.message || JSON.stringify(error));
+      }
+      return [];
     }
 
     return (data || []).map((item: any) => ({

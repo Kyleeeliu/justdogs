@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { getMessagesByUser } from '@/lib/supabase/messages';
+import { getUnreadMessageCount } from '@/lib/supabase/messages';
 
 import {
   HomeIcon,
@@ -58,8 +58,7 @@ export default function DashboardLayout({
       if (!user) return;
       
       try {
-        const messages = await getMessagesByUser(user.id);
-        const unreadCount = messages.filter(msg => !msg.read_at && msg.sender_id !== user.id).length;
+        const unreadCount = await getUnreadMessageCount(user.id);
         setUnreadMessageCount(unreadCount);
       } catch (error) {
         console.error('Error loading unread message count:', error);

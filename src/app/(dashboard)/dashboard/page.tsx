@@ -19,6 +19,7 @@ import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingM
 import { getDogsByOwner, getAllDogs } from '@/lib/supabase/dogs';
 import { getUsersByRole } from '@/lib/supabase/users';
 import { authenticatedGet, authenticatedPost } from '@/lib/api/apiClient';
+import { AdminManagementPanel } from '@/components/AdminManagementPanel';
 
 // Component to display parent's dogs
 const ParentDogsCard = ({ userId }: { userId: string }) => {
@@ -465,6 +466,9 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Admin Management Panel */}
+        <AdminManagementPanel />
       </div>
     );
   };
