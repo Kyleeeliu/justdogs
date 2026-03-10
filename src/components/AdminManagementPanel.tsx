@@ -13,36 +13,57 @@ import {
   CalendarIcon,
   CheckIcon,
   XMarkIcon,
-  ClockIcon,
   DocumentArrowUpIcon,
+  UserIcon,
 } from '@heroicons/react/24/outline';
 import { authenticatedGet, authenticatedFetch, authenticatedPut } from '@/lib/api/apiClient';
-import { getUsersByRole } from '@/lib/supabase/users';
 import { getAllNewsItems, addNewsItem, updateNewsItem, deleteNewsItem } from '@/lib/data/content';
 import type { NewsItem } from '@/lib/data/content';
 import { type EventItem } from '@/lib/supabase/events';
 import { uploadNewsAttachment, type NewsAttachment } from '@/lib/supabase/storage';
+import { getAllDogs } from '@/lib/supabase/dogs';
 
-interface PendingBooking {
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const BOOKING_TYPES = [
+  { value: 'behavior_and_home', label: 'Behavior and Home' },
+  { value: 'academy', label: 'Academy' },
+  { value: 'farm', label: 'Farm' },
+  { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
+];
+
+const BOOKING_STATUSES = [
+  { value: 'pending', label: 'Pending', color: 'bg-amber-100 text-amber-700' },
+  { value: 'confirmed', label: 'Confirmed', color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-600' },
+  { value: 'completed', label: 'Completed', color: 'bg-gray-100 text-gray-600' },
+];
+
+// ─── Interfaces ───────────────────────────────────────────────────────────────
+
+interface Booking {
   id: string;
+  dog_id: string | null;
   dog_name: string;
+  parent_id: string | null;
   parent_name: string;
+  trainer_id: string | null;
+  trainer_name: string | null;
   booking_type: string;
   start_time: string;
+  end_time: string | null;
+  notes: string | null;
   created_at: string;
   status: string;
-  trainer_id: string | null;
 }
 
-interface PendingTrainer {
+interface Trainer {
   id: string;
   full_name: string;
   email: string;
   created_at: string;
-  approval_status: string;
+  approval_status: string | null;
 }
-
-type TabType = 'bookings' | 'trainers' | 'newsletters' | 'events';
 
 interface NewsletterFormState {
   title: string;
@@ -60,19 +81,85 @@ interface EventFormState {
   published: boolean;
 }
 
+interface BookingEditState {
+  id: string;
+  booking_type: string;
+  start_time: string;
+  end_time: string;
+  notes: string;
+  status: string;
+  trainer_id: string;
+}
+
+interface BookingCreateState {
+  dog_id: string;
+  trainer_id: string;
+  booking_type: string;
+  start_time: string;
+  end_time: string;
+  notes: string;
+}
+
+type TabType = 'bookings' | 'trainers' | 'newsletters' | 'events';
+type BookingFilter = 'all' | 'pending' | 'confirmed' | 'cancelled' | 'completed';
+type TrainerFilter = 'all' | 'pending' | 'approved' | 'rejected';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return '';
+  // Convert ISO to datetime-local format: "YYYY-MM-DDTHH:mm"
+  return iso.slice(0, 16);
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-ZA', {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function statusBadge(status: string) {
+  const s = BOOKING_STATUSES.find((b) => b.value === status);
+  return s ? s.color : 'bg-gray-100 text-gray-600';
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export function AdminManagementPanel() {
   const [activeTab, setActiveTab] = useState<TabType>('bookings');
   const [loading, setLoading] = useState(true);
 
-  // Bookings
-  const [pendingBookings, setPendingBookings] = useState<PendingBooking[]>([]);
-  const [trainers, setTrainers] = useState<Array<{ id: string; full_name: string }>>([]);
-  const [assigningTrainer, setAssigningTrainer] = useState<string | null>(null);
+  // ── Bookings ──
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>('all');
+  const [approvedTrainers, setApprovedTrainers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [assigningBookingId, setAssigningBookingId] = useState<string | null>(null);
+  const [editingBooking, setEditingBooking] = useState<BookingEditState | null>(null);
+  const [showCreateBooking, setShowCreateBooking] = useState(false);
+  const [allDogs, setAllDogs] = useState<Array<{ id: string; name: string }>>([]);
+  const [bookingFormError, setBookingFormError] = useState<string | null>(null);
+  const emptyCreate: BookingCreateState = {
+    dog_id: '',
+    trainer_id: '',
+    booking_type: '',
+    start_time: '',
+    end_time: '',
+    notes: '',
+  };
+  const [createForm, setCreateForm] = useState<BookingCreateState>(emptyCreate);
 
-  // Trainer Approvals
-  const [pendingTrainers, setPendingTrainers] = useState<PendingTrainer[]>([]);
+  // ── Trainers ──
+  const [allTrainers, setAllTrainers] = useState<Trainer[]>([]);
+  const [trainerFilter, setTrainerFilter] = useState<TrainerFilter>('all');
 
-  // Newsletters
+  // ── Newsletters ──
   const [newsletters, setNewsletters] = useState<NewsItem[]>([]);
   const [showNewsletterModal, setShowNewsletterModal] = useState(false);
   const [editingNewsletter, setEditingNewsletter] = useState<NewsItem | null>(null);
@@ -86,7 +173,7 @@ export function AdminManagementPanel() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Events
+  // ── Events ──
   const [events, setEvents] = useState<EventItem[]>([]);
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
@@ -106,51 +193,58 @@ export function AdminManagementPanel() {
     try {
       setLoading(true);
 
-      // Load all trainers - split into approved (for booking assignment) and pending (for approval)
-      const allTrainers = await getUsersByRole('trainer');
-      setTrainers(
-        allTrainers.filter((t: any) => !t.approval_status || t.approval_status === 'approved')
-      );
-      setPendingTrainers(
-        allTrainers
-          .filter((t: any) => t.approval_status === 'pending')
-          .map((t: any) => ({
-            id: t.id,
-            full_name: t.full_name,
-            email: t.email,
-            created_at: t.created_at,
-            approval_status: t.approval_status,
-          }))
-      );
-
-      // Load pending bookings
-      const bookingsRes = await authenticatedGet('/api/bookings');
-      if (bookingsRes.ok) {
-        const bookingsData = await bookingsRes.json();
-        const pending = bookingsData
-          .filter(
-            (b: any) =>
-              b.status === 'pending' ||
-              (b.status === 'confirmed' && !b.trainer_id)
-          )
-          .map((b: any) => ({
-            id: b.id,
-            dog_name: b.dog?.name || b.dogs?.name || 'Unknown Dog',
-            parent_name: b.parent?.full_name || b.parents?.full_name || 'Unknown Parent',
-            booking_type: b.booking_type,
-            start_time: b.start_time,
-            created_at: b.created_at,
-            status: b.status,
-            trainer_id: b.trainer_id,
-          }));
-        setPendingBookings(pending);
+      // ── Trainers (all) ──
+      const res = await authenticatedGet('/api/users?role=trainer');
+      if (res.ok) {
+        const data = await res.json();
+        const trainers: Trainer[] = (data.users || []).map((t: any) => ({
+          id: t.id,
+          full_name: t.full_name,
+          email: t.email,
+          created_at: t.created_at,
+          approval_status: t.approval_status ?? null,
+        }));
+        setAllTrainers(trainers);
+        setApprovedTrainers(
+          trainers.filter((t) => !t.approval_status || t.approval_status === 'approved')
+        );
       }
 
-      // Load newsletters (news_items with type='news')
+      // ── All Bookings ──
+      const bookingsRes = await authenticatedGet('/api/bookings');
+      if (bookingsRes.ok) {
+        const data = await bookingsRes.json();
+        const bookings: Booking[] = data.map((b: any) => ({
+          id: b.id,
+          dog_id: b.dog_id ?? null,
+          dog_name: b.dogs?.name || b.dog?.name || 'Unknown Dog',
+          parent_id: b.parent_id ?? null,
+          parent_name: b.parents?.full_name || b.parent?.full_name || 'Unknown Owner',
+          trainer_id: b.trainer_id ?? null,
+          trainer_name: b.trainers?.full_name || null,
+          booking_type: b.booking_type,
+          start_time: b.start_time,
+          end_time: b.end_time ?? null,
+          notes: b.notes ?? null,
+          created_at: b.created_at,
+          status: b.status,
+        }));
+        setAllBookings(bookings);
+      }
+
+      // ── Dogs (for create booking) ──
+      try {
+        const dogs = await getAllDogs();
+        setAllDogs(dogs.map((d) => ({ id: d.id, name: d.name })));
+      } catch {
+        setAllDogs([]);
+      }
+
+      // ── Newsletters ──
       const allNews = await getAllNewsItems();
       setNewsletters(allNews.filter((n) => n.type === 'news'));
 
-      // Load events via API (service role — bypasses RLS)
+      // ── Events ──
       try {
         const eventsRes = await authenticatedGet('/api/events');
         if (eventsRes.ok) {
@@ -169,78 +263,136 @@ export function AdminManagementPanel() {
     }
   };
 
-  // ---- BOOKING HANDLERS ----
+  // ─── Booking Handlers ─────────────────────────────────────────────────────
 
   const handleAssignTrainer = async (bookingId: string, trainerId: string) => {
     try {
       const res = await authenticatedFetch('/api/bookings', {
         method: 'PUT',
-        body: JSON.stringify({ id: bookingId, status: 'confirmed', trainer_id: trainerId }),
+        body: JSON.stringify({ id: bookingId, trainer_id: trainerId, status: 'confirmed' }),
       });
-      if (res.ok) {
-        await loadData();
-        setAssigningTrainer(null);
-      } else {
-        throw new Error('Failed to assign trainer');
-      }
+      if (!res.ok) throw new Error('Failed to assign trainer');
+      await loadData();
+      setAssigningBookingId(null);
     } catch (error) {
       console.error('Error assigning trainer:', error);
       alert('Failed to assign trainer. Please try again.');
     }
   };
 
-  const handleRejectBooking = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to reject this booking?')) return;
+  const openEditBooking = (b: Booking) => {
+    setBookingFormError(null);
+    setEditingBooking({
+      id: b.id,
+      booking_type: b.booking_type,
+      start_time: toLocalInput(b.start_time),
+      end_time: toLocalInput(b.end_time),
+      notes: b.notes || '',
+      status: b.status,
+      trainer_id: b.trainer_id || '',
+    });
+  };
+
+  const handleSaveEditBooking = async () => {
+    if (!editingBooking) return;
+    setBookingFormError(null);
+    if (!editingBooking.booking_type || !editingBooking.start_time) {
+      setBookingFormError('Service type and start date/time are required.');
+      return;
+    }
     try {
+      const payload: any = {
+        id: editingBooking.id,
+        booking_type: editingBooking.booking_type,
+        start_time: new Date(editingBooking.start_time).toISOString(),
+        end_time: editingBooking.end_time
+          ? new Date(editingBooking.end_time).toISOString()
+          : null,
+        notes: editingBooking.notes || null,
+        status: editingBooking.status,
+        trainer_id: editingBooking.trainer_id || null,
+      };
       const res = await authenticatedFetch('/api/bookings', {
         method: 'PUT',
-        body: JSON.stringify({ id: bookingId, status: 'cancelled' }),
+        body: JSON.stringify(payload),
       });
-      if (res.ok) await loadData();
-    } catch (error) {
-      console.error('Error rejecting booking:', error);
-    }
-  };
-
-  // ---- TRAINER APPROVAL HANDLERS ----
-
-  const handleApproveTrainer = async (trainerId: string) => {
-    try {
-      const res = await authenticatedPut('/api/users', {
-        id: trainerId,
-        approval_status: 'approved',
-      });
-      if (res.ok) {
-        await loadData();
-      } else {
+      if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to approve trainer');
+        throw new Error((err as any).error || 'Failed to save booking');
       }
+      setEditingBooking(null);
+      await loadData();
     } catch (error: any) {
-      console.error('Error approving trainer:', error);
-      alert(error.message || 'Failed to approve trainer. Please try again.');
+      setBookingFormError(error.message || 'Failed to save booking');
     }
   };
 
-  const handleRejectTrainer = async (trainerId: string) => {
-    if (!confirm('Reject this trainer application? They will not be able to log in.')) return;
+  const handleDeleteBooking = async (bookingId: string) => {
+    if (!confirm('Delete this booking? This cannot be undone.')) return;
     try {
-      const res = await authenticatedPut('/api/users', {
-        id: trainerId,
-        approval_status: 'rejected',
-      });
-      if (res.ok) {
-        await loadData();
-      } else {
-        throw new Error('Failed to reject trainer');
+      const res = await authenticatedFetch(`/api/bookings?id=${bookingId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || 'Failed to delete booking');
       }
+      await loadData();
     } catch (error: any) {
-      console.error('Error rejecting trainer:', error);
-      alert(error.message || 'Failed to reject trainer. Please try again.');
+      alert(error.message || 'Failed to delete booking.');
     }
   };
 
-  // ---- NEWSLETTER HANDLERS ----
+  const handleCreateBooking = async () => {
+    setBookingFormError(null);
+    if (!createForm.dog_id || !createForm.booking_type || !createForm.start_time) {
+      setBookingFormError('Dog, service type, and start date/time are required.');
+      return;
+    }
+    try {
+      const payload: any = {
+        dog_id: createForm.dog_id,
+        booking_type: createForm.booking_type,
+        start_time: new Date(createForm.start_time).toISOString(),
+        end_time: createForm.end_time ? new Date(createForm.end_time).toISOString() : null,
+        notes: createForm.notes || null,
+        trainer_id: createForm.trainer_id || null,
+      };
+      const res = await authenticatedFetch('/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || 'Failed to create booking');
+      }
+      setShowCreateBooking(false);
+      setCreateForm(emptyCreate);
+      await loadData();
+    } catch (error: any) {
+      setBookingFormError(error.message || 'Failed to create booking');
+    }
+  };
+
+  // ─── Trainer Handlers ─────────────────────────────────────────────────────
+
+  const handleTrainerStatus = async (trainerId: string, status: 'approved' | 'rejected') => {
+    if (
+      status === 'rejected' &&
+      !confirm('Reject this trainer? They will not be able to log in.')
+    )
+      return;
+    try {
+      const res = await authenticatedPut('/api/users', { id: trainerId, approval_status: status });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || `Failed to ${status} trainer`);
+      }
+      await loadData();
+    } catch (error: any) {
+      alert(error.message || `Failed to ${status} trainer.`);
+    }
+  };
+
+  // ─── Newsletter Handlers ──────────────────────────────────────────────────
 
   const resetNewsletterForm = () => {
     setNewsletterForm({
@@ -258,24 +410,19 @@ export function AdminManagementPanel() {
       alert('Please enter a title for the newsletter.');
       return;
     }
-
     try {
       let attachments: NewsAttachment[] = (editingNewsletter?.attachments as NewsAttachment[]) || [];
-
-      // Upload PDF if a new file was selected
       if (newsletterForm.pendingFile) {
         setUploadingFile(true);
         const newsItemId = editingNewsletter?.id || `newsletter-${Date.now()}`;
         const result = await uploadNewsAttachment(newsletterForm.pendingFile, newsItemId);
         setUploadingFile(false);
-
         if (!result.success || !result.attachment) {
           alert(`PDF upload failed: ${result.error || 'Unknown error'}`);
           return;
         }
         attachments = [...attachments, result.attachment];
       }
-
       const newsData = {
         title: newsletterForm.title.trim(),
         content: newsletterForm.content.trim(),
@@ -284,13 +431,11 @@ export function AdminManagementPanel() {
         published: newsletterForm.published,
         attachments,
       };
-
       if (editingNewsletter) {
         await updateNewsItem(editingNewsletter.id, newsData);
       } else {
         await addNewsItem(newsData);
       }
-
       setShowNewsletterModal(false);
       setEditingNewsletter(null);
       resetNewsletterForm();
@@ -320,7 +465,6 @@ export function AdminManagementPanel() {
       await deleteNewsItem(id);
       await loadData();
     } catch (error) {
-      console.error('Error deleting newsletter:', error);
       alert('Failed to delete newsletter.');
     }
   };
@@ -334,7 +478,7 @@ export function AdminManagementPanel() {
     }
   };
 
-  // ---- EVENT HANDLERS ----
+  // ─── Event Handlers ───────────────────────────────────────────────────────
 
   const resetEventForm = () => {
     setEventForm({
@@ -351,28 +495,22 @@ export function AdminManagementPanel() {
       alert('Please fill in the event title, description, and date.');
       return;
     }
-
     try {
-      // Only send the fields the user actually filled in
       const formFields: Record<string, any> = {
         title: eventForm.title.trim(),
         description: eventForm.description.trim(),
         event_date: eventForm.event_date,
         published: eventForm.published,
       };
-      if (eventForm.location.trim()) {
-        formFields.location = eventForm.location.trim();
-      }
+      if (eventForm.location.trim()) formFields.location = eventForm.location.trim();
 
       let res: Response;
       if (editingEvent) {
-        // PATCH: only update the fields from the form — don't touch status/category
         res = await authenticatedFetch('/api/events', {
           method: 'PATCH',
           body: JSON.stringify({ id: editingEvent.id, ...formFields }),
         });
       } else {
-        // POST: include sensible defaults for required DB columns
         res = await authenticatedFetch('/api/events', {
           method: 'POST',
           body: JSON.stringify({
@@ -389,13 +527,11 @@ export function AdminManagementPanel() {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as any).error || `Server error (${res.status})`);
       }
-
       setShowEventModal(false);
       setEditingEvent(null);
       resetEventForm();
       await loadData();
     } catch (error: any) {
-      console.error('Error saving event:', error);
       alert(error.message || 'Failed to save event. Please try again.');
     }
   };
@@ -422,7 +558,6 @@ export function AdminManagementPanel() {
       }
       await loadData();
     } catch (error: any) {
-      console.error('Error deleting event:', error);
       alert(error.message || 'Failed to delete event.');
     }
   };
@@ -433,16 +568,31 @@ export function AdminManagementPanel() {
         method: 'PATCH',
         body: JSON.stringify({ id: event.id, published: !event.published }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).error || `Update failed (${res.status})`);
-      }
+      if (!res.ok) throw new Error('Failed to update event');
       await loadData();
     } catch (error: any) {
-      console.error('Error toggling event:', error);
-      alert(error.message || 'Failed to update event. Please try again.');
+      alert(error.message || 'Failed to update event.');
     }
   };
+
+  // ─── Derived data ─────────────────────────────────────────────────────────
+
+  const filteredBookings =
+    bookingFilter === 'all'
+      ? allBookings
+      : allBookings.filter((b) => b.status === bookingFilter);
+
+  const filteredTrainers =
+    trainerFilter === 'all'
+      ? allTrainers
+      : trainerFilter === 'approved'
+      ? allTrainers.filter((t) => !t.approval_status || t.approval_status === 'approved')
+      : allTrainers.filter((t) => t.approval_status === trainerFilter);
+
+  const pendingTrainerCount = allTrainers.filter((t) => t.approval_status === 'pending').length;
+  const pendingBookingCount = allBookings.filter((b) => b.status === 'pending').length;
+
+  // ─── Loading State ────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -460,15 +610,15 @@ export function AdminManagementPanel() {
   const tabs: Array<{ id: TabType; label: string; count?: number; icon: React.ReactNode }> = [
     {
       id: 'bookings',
-      label: 'Pending Bookings',
-      count: pendingBookings.length,
-      icon: <UserGroupIcon className="h-4 w-4" />,
+      label: 'Bookings',
+      count: pendingBookingCount || undefined,
+      icon: <CalendarIcon className="h-4 w-4" />,
     },
     {
       id: 'trainers',
       label: 'Trainer Approvals',
-      count: pendingTrainers.length,
-      icon: <ClockIcon className="h-4 w-4" />,
+      count: pendingTrainerCount || undefined,
+      icon: <UserIcon className="h-4 w-4" />,
     },
     {
       id: 'newsletters',
@@ -485,7 +635,7 @@ export function AdminManagementPanel() {
   return (
     <Card className="border-2 border-[rgb(0_32_96)] overflow-hidden">
       <CardHeader className="bg-[rgb(0_32_96)] text-white">
-        <CardTitle className="text-xl">Content Management</CardTitle>
+        <CardTitle className="text-xl">Admin Management</CardTitle>
         <CardDescription className="text-blue-200">
           Manage bookings, trainer approvals, newsletters, and events
         </CardDescription>
@@ -510,9 +660,7 @@ export function AdminManagementPanel() {
                 {tab.count !== undefined && tab.count > 0 && (
                   <span
                     className={`px-1.5 py-0.5 text-xs rounded-full font-bold ${
-                      activeTab === tab.id
-                        ? 'bg-[rgb(0_32_96)] text-white'
-                        : 'bg-red-500 text-white'
+                      activeTab === tab.id ? 'bg-[rgb(0_32_96)] text-white' : 'bg-red-500 text-white'
                     }`}
                   >
                     {tab.count}
@@ -523,129 +671,110 @@ export function AdminManagementPanel() {
           </div>
         </div>
 
-        {/* ===================== PENDING BOOKINGS TAB ===================== */}
+        {/* ═══════════════ BOOKINGS TAB ═══════════════ */}
         {activeTab === 'bookings' && (
           <div className="p-6">
-            {pendingBookings.length === 0 ? (
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              {/* Status filter */}
+              <div className="flex flex-wrap gap-1.5">
+                {(['all', 'pending', 'confirmed', 'cancelled', 'completed'] as BookingFilter[]).map(
+                  (f) => {
+                    const count =
+                      f === 'all'
+                        ? allBookings.length
+                        : allBookings.filter((b) => b.status === f).length;
+                    return (
+                      <button
+                        key={f}
+                        onClick={() => setBookingFilter(f)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium capitalize transition-colors ${
+                          bookingFilter === f
+                            ? 'bg-[rgb(0_32_96)] text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {f} ({count})
+                      </button>
+                    );
+                  }
+                )}
+              </div>
+              <Button
+                size="sm"
+                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] flex-shrink-0"
+                onClick={() => {
+                  setBookingFormError(null);
+                  setCreateForm(emptyCreate);
+                  setShowCreateBooking(true);
+                }}
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                New Booking
+              </Button>
+            </div>
+
+            {filteredBookings.length === 0 ? (
               <div className="text-center py-14 text-gray-400">
-                <UserGroupIcon className="h-14 w-14 mx-auto mb-3 text-gray-200" />
-                <p className="font-semibold text-gray-500">No pending bookings</p>
-                <p className="text-sm mt-1">All bookings have been processed</p>
+                <CalendarIcon className="h-14 w-14 mx-auto mb-3 text-gray-200" />
+                <p className="font-semibold text-gray-500">No bookings</p>
+                <p className="text-sm mt-1">
+                  {bookingFilter === 'all' ? 'No bookings have been made yet' : `No ${bookingFilter} bookings`}
+                </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {pendingBookings.map((booking) => (
+              <div className="space-y-2">
+                {filteredBookings.map((booking) => (
                   <div
                     key={booking.id}
-                    className="flex items-start sm:items-center justify-between p-4 bg-amber-50 border border-amber-200 rounded-xl gap-3"
+                    className="flex items-start sm:items-center justify-between p-4 bg-white border border-gray-200 rounded-xl gap-3 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="font-semibold text-gray-900">{booking.dog_name}</span>
-                        <span className="text-sm text-gray-500">• {booking.parent_name}</span>
-                        {!booking.trainer_id && (
-                          <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-medium">
-                            No Trainer Assigned
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        {booking.booking_type.replace(/_/g, ' ')} •{' '}
-                        {new Date(booking.start_time).toLocaleDateString('en-ZA', {
-                          weekday: 'short',
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })}{' '}
-                        at{' '}
-                        {new Date(booking.start_time).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        Requested {new Date(booking.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => setAssigningTrainer(booking.id)}
-                      >
-                        <CheckIcon className="h-4 w-4 mr-1" />
-                        Assign Trainer
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600 border-red-200 hover:bg-red-50"
-                        onClick={() => handleRejectBooking(booking.id)}
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ===================== TRAINER APPROVALS TAB ===================== */}
-        {activeTab === 'trainers' && (
-          <div className="p-6">
-            <div className="mb-4">
-              <p className="text-sm text-gray-500">
-                New trainer registrations require admin approval before they can log in.
-              </p>
-            </div>
-            {pendingTrainers.length === 0 ? (
-              <div className="text-center py-14 text-gray-400">
-                <CheckIcon className="h-14 w-14 mx-auto mb-3 text-gray-200" />
-                <p className="font-semibold text-gray-500">No pending applications</p>
-                <p className="text-sm mt-1">All trainer accounts have been reviewed</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {pendingTrainers.map((trainer) => (
-                  <div
-                    key={trainer.id}
-                    className="flex items-start sm:items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl gap-3"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="font-semibold text-gray-900">{trainer.full_name}</span>
-                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
-                          Pending Review
+                        <span className="text-sm text-gray-500">— {booking.parent_name}</span>
+                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(booking.status)}`}>
+                          {booking.status}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600">{trainer.email}</p>
+                      <p className="text-sm text-gray-600">
+                        {BOOKING_TYPES.find((t) => t.value === booking.booking_type)?.label ||
+                          booking.booking_type.replace(/_/g, ' ')}{' '}
+                        · {formatDate(booking.start_time)} at {formatTime(booking.start_time)}
+                      </p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Applied {new Date(trainer.created_at).toLocaleDateString('en-ZA', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
+                        Trainer:{' '}
+                        <span className={booking.trainer_name ? 'text-gray-700 font-medium' : 'text-red-500'}>
+                          {booking.trainer_name || 'Unassigned'}
+                        </span>
                       </p>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
+                    <div className="flex gap-1.5 flex-shrink-0">
                       <Button
                         size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => handleApproveTrainer(trainer.id)}
+                        variant="outline"
+                        className="text-xs px-2.5"
+                        onClick={() => setAssigningBookingId(booking.id)}
+                        title="Assign trainer"
                       >
-                        <CheckIcon className="h-4 w-4 mr-1" />
-                        Approve
+                        <UserGroupIcon className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEditBooking(booking)}
+                        title="Edit booking"
+                      >
+                        <PencilIcon className="h-4 w-4" />
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         className="text-red-600 border-red-200 hover:bg-red-50"
-                        onClick={() => handleRejectTrainer(trainer.id)}
+                        onClick={() => handleDeleteBooking(booking.id)}
+                        title="Delete booking"
                       >
-                        <XMarkIcon className="h-4 w-4 mr-1" />
-                        Reject
+                        <TrashIcon className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -655,7 +784,116 @@ export function AdminManagementPanel() {
           </div>
         )}
 
-        {/* ===================== NEWSLETTERS TAB ===================== */}
+        {/* ═══════════════ TRAINER APPROVALS TAB ═══════════════ */}
+        {activeTab === 'trainers' && (
+          <div className="p-6">
+            {/* Filter */}
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              {(['all', 'pending', 'approved', 'rejected'] as TrainerFilter[]).map((f) => {
+                const count =
+                  f === 'all'
+                    ? allTrainers.length
+                    : f === 'approved'
+                    ? allTrainers.filter((t) => !t.approval_status || t.approval_status === 'approved').length
+                    : allTrainers.filter((t) => t.approval_status === f).length;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setTrainerFilter(f)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium capitalize transition-colors ${
+                      trainerFilter === f
+                        ? 'bg-[rgb(0_32_96)] text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {f} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {filteredTrainers.length === 0 ? (
+              <div className="text-center py-14 text-gray-400">
+                <CheckIcon className="h-14 w-14 mx-auto mb-3 text-gray-200" />
+                <p className="font-semibold text-gray-500">No trainers</p>
+                <p className="text-sm mt-1">
+                  {trainerFilter === 'pending'
+                    ? 'No pending applications'
+                    : `No ${trainerFilter} trainers`}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredTrainers.map((trainer) => {
+                  const isApproved = !trainer.approval_status || trainer.approval_status === 'approved';
+                  const isPending = trainer.approval_status === 'pending';
+                  const isRejected = trainer.approval_status === 'rejected';
+                  return (
+                    <div
+                      key={trainer.id}
+                      className="flex items-start sm:items-center justify-between p-4 bg-white border border-gray-200 rounded-xl gap-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="font-semibold text-gray-900">{trainer.full_name}</span>
+                          {isPending && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                              Pending Review
+                            </span>
+                          )}
+                          {isApproved && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                              Approved
+                            </span>
+                          )}
+                          {isRejected && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full font-medium">
+                              Rejected
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600">{trainer.email}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Registered{' '}
+                          {new Date(trainer.created_at).toLocaleDateString('en-ZA', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        {(isPending || isRejected) && (
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => handleTrainerStatus(trainer.id, 'approved')}
+                          >
+                            <CheckIcon className="h-4 w-4 mr-1" />
+                            Approve
+                          </Button>
+                        )}
+                        {(isPending || isApproved) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => handleTrainerStatus(trainer.id, 'rejected')}
+                          >
+                            <XMarkIcon className="h-4 w-4 mr-1" />
+                            {isPending ? 'Reject' : 'Revoke'}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════════ NEWSLETTERS TAB ═══════════════ */}
         {activeTab === 'newsletters' && (
           <div className="p-6">
             <div className="flex items-center justify-between mb-5">
@@ -699,9 +937,7 @@ export function AdminManagementPanel() {
                         )}
                         <span
                           className={`px-2 py-0.5 text-xs rounded-full ${
-                            item.published
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-gray-100 text-gray-500'
+                            item.published ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
                           }`}
                         >
                           {item.published ? 'Published' : 'Draft'}
@@ -727,11 +963,7 @@ export function AdminManagementPanel() {
                       >
                         {item.published ? 'Unpublish' : 'Publish'}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEditNewsletter(item)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => handleEditNewsletter(item)}>
                         <PencilIcon className="h-4 w-4" />
                       </Button>
                       <Button
@@ -750,7 +982,7 @@ export function AdminManagementPanel() {
           </div>
         )}
 
-        {/* ===================== EVENTS TAB ===================== */}
+        {/* ═══════════════ EVENTS TAB ═══════════════ */}
         {activeTab === 'events' && (
           <div className="p-6">
             <div className="flex items-center justify-between mb-5">
@@ -789,9 +1021,7 @@ export function AdminManagementPanel() {
                         <h4 className="font-semibold text-gray-900">{event.title}</h4>
                         <span
                           className={`px-2 py-0.5 text-xs rounded-full ${
-                            event.published
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-gray-100 text-gray-500'
+                            event.published ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
                           }`}
                         >
                           {event.published ? 'Published' : 'Draft'}
@@ -832,11 +1062,7 @@ export function AdminManagementPanel() {
                       >
                         {event.published ? 'Unpublish' : 'Publish'}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEditEvent(event)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => handleEditEvent(event)}>
                         <PencilIcon className="h-4 w-4" />
                       </Button>
                       <Button
@@ -856,8 +1082,8 @@ export function AdminManagementPanel() {
         )}
       </CardContent>
 
-      {/* ===================== TRAINER ASSIGNMENT MODAL ===================== */}
-      {assigningTrainer && (
+      {/* ═══════════════ MODAL: ASSIGN TRAINER ═══════════════ */}
+      {assigningBookingId && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-lg font-bold text-gray-900 mb-1">Assign Trainer</h3>
@@ -865,7 +1091,7 @@ export function AdminManagementPanel() {
               Select an approved trainer to assign to this booking.
             </p>
             <div className="space-y-2 mb-6 max-h-72 overflow-y-auto">
-              {trainers.length === 0 ? (
+              {approvedTrainers.length === 0 ? (
                 <div className="text-center py-6">
                   <p className="text-sm text-gray-500">No approved trainers available.</p>
                   <p className="text-xs text-gray-400 mt-1">
@@ -873,10 +1099,10 @@ export function AdminManagementPanel() {
                   </p>
                 </div>
               ) : (
-                trainers.map((trainer) => (
+                approvedTrainers.map((trainer) => (
                   <button
                     key={trainer.id}
-                    onClick={() => handleAssignTrainer(assigningTrainer, trainer.id)}
+                    onClick={() => handleAssignTrainer(assigningBookingId, trainer.id)}
                     className="w-full p-3.5 text-left border border-gray-200 rounded-xl hover:bg-[rgb(0_32_96)] hover:text-white hover:border-[rgb(0_32_96)] transition-all font-medium text-sm"
                   >
                     {trainer.full_name}
@@ -884,18 +1110,231 @@ export function AdminManagementPanel() {
                 ))
               )}
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setAssigningTrainer(null)}
-              className="w-full"
-            >
+            <Button variant="outline" onClick={() => setAssigningBookingId(null)} className="w-full">
               Cancel
             </Button>
           </div>
         </div>
       )}
 
-      {/* ===================== NEWSLETTER MODAL ===================== */}
+      {/* ═══════════════ MODAL: EDIT BOOKING ═══════════════ */}
+      {editingBooking && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-900 mb-5">Edit Booking</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Service Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={editingBooking.booking_type}
+                  onChange={(e) => setEditingBooking({ ...editingBooking, booking_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                >
+                  <option value="">Choose a service...</option>
+                  {BOOKING_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Start Date & Time <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={editingBooking.start_time}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, start_time: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    End Date & Time <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={editingBooking.end_time}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, end_time: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Status</label>
+                <select
+                  value={editingBooking.status}
+                  onChange={(e) => setEditingBooking({ ...editingBooking, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                >
+                  {BOOKING_STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Trainer</label>
+                <select
+                  value={editingBooking.trainer_id}
+                  onChange={(e) => setEditingBooking({ ...editingBooking, trainer_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                >
+                  <option value="">Unassigned</option>
+                  {approvedTrainers.map((t) => (
+                    <option key={t.id} value={t.id}>{t.full_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+                <textarea
+                  value={editingBooking.notes}
+                  onChange={(e) => setEditingBooking({ ...editingBooking, notes: e.target.value })}
+                  placeholder="Any special instructions or notes..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm resize-none"
+                />
+              </div>
+
+              {bookingFormError && (
+                <p className="text-sm text-red-600">{bookingFormError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => { setEditingBooking(null); setBookingFormError(null); }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEditBooking}
+                className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL: CREATE BOOKING ═══════════════ */}
+      {showCreateBooking && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-900 mb-5">New Booking</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Dog <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={createForm.dog_id}
+                  onChange={(e) => setCreateForm({ ...createForm, dog_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                >
+                  <option value="">Select a dog...</option>
+                  {allDogs.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Service Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={createForm.booking_type}
+                  onChange={(e) => setCreateForm({ ...createForm, booking_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                >
+                  <option value="">Choose a service...</option>
+                  {BOOKING_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Start Date & Time <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={createForm.start_time}
+                    onChange={(e) => setCreateForm({ ...createForm, start_time: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    End Date & Time <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={createForm.end_time}
+                    onChange={(e) => setCreateForm({ ...createForm, end_time: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Trainer</label>
+                <select
+                  value={createForm.trainer_id}
+                  onChange={(e) => setCreateForm({ ...createForm, trainer_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                >
+                  <option value="">Assign later</option>
+                  {approvedTrainers.map((t) => (
+                    <option key={t.id} value={t.id}>{t.full_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+                <textarea
+                  value={createForm.notes}
+                  onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
+                  placeholder="Any special instructions or notes..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm resize-none"
+                />
+              </div>
+
+              {bookingFormError && (
+                <p className="text-sm text-red-600">{bookingFormError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => { setShowCreateBooking(false); setBookingFormError(null); }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateBooking}
+                className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+              >
+                Create Booking
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL: NEWSLETTER ═══════════════ */}
       {showNewsletterModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -910,23 +1349,18 @@ export function AdminManagementPanel() {
                 </label>
                 <Input
                   value={newsletterForm.title}
-                  onChange={(e) =>
-                    setNewsletterForm({ ...newsletterForm, title: e.target.value })
-                  }
+                  onChange={(e) => setNewsletterForm({ ...newsletterForm, title: e.target.value })}
                   placeholder="e.g., Spring 2025 Newsletter"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Summary{' '}
-                  <span className="text-gray-400 font-normal">(optional)</span>
+                  Summary <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <textarea
                   value={newsletterForm.content}
-                  onChange={(e) =>
-                    setNewsletterForm({ ...newsletterForm, content: e.target.value })
-                  }
+                  onChange={(e) => setNewsletterForm({ ...newsletterForm, content: e.target.value })}
                   placeholder="Brief description of what this newsletter covers..."
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm resize-none"
@@ -939,9 +1373,7 @@ export function AdminManagementPanel() {
                   <Input
                     type="date"
                     value={newsletterForm.date}
-                    onChange={(e) =>
-                      setNewsletterForm({ ...newsletterForm, date: e.target.value })
-                    }
+                    onChange={(e) => setNewsletterForm({ ...newsletterForm, date: e.target.value })}
                   />
                 </div>
                 <div className="flex items-end pb-0.5">
@@ -949,9 +1381,7 @@ export function AdminManagementPanel() {
                     <input
                       type="checkbox"
                       checked={newsletterForm.published}
-                      onChange={(e) =>
-                        setNewsletterForm({ ...newsletterForm, published: e.target.checked })
-                      }
+                      onChange={(e) => setNewsletterForm({ ...newsletterForm, published: e.target.checked })}
                       className="w-4 h-4 rounded border-gray-300 accent-[rgb(0_32_96)]"
                     />
                     <span className="text-sm font-medium text-gray-700">Publish immediately</span>
@@ -970,9 +1400,7 @@ export function AdminManagementPanel() {
                   <DocumentArrowUpIcon className="h-8 w-8 text-gray-300 mx-auto mb-2" />
                   {newsletterForm.pendingFile ? (
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {newsletterForm.pendingFile.name}
-                      </p>
+                      <p className="text-sm font-semibold text-gray-900">{newsletterForm.pendingFile.name}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {(newsletterForm.pendingFile.size / 1024 / 1024).toFixed(2)} MB — click to change
                       </p>
@@ -995,7 +1423,6 @@ export function AdminManagementPanel() {
                   />
                 </div>
 
-                {/* Show existing attachments when editing */}
                 {editingNewsletter?.attachments && editingNewsletter.attachments.length > 0 && (
                   <div className="mt-2 space-y-1">
                     <p className="text-xs text-gray-400">Currently attached:</p>
@@ -1025,11 +1452,7 @@ export function AdminManagementPanel() {
             <div className="flex gap-3 mt-6">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setShowNewsletterModal(false);
-                  setEditingNewsletter(null);
-                  resetNewsletterForm();
-                }}
+                onClick={() => { setShowNewsletterModal(false); setEditingNewsletter(null); resetNewsletterForm(); }}
                 className="flex-1"
               >
                 Cancel
@@ -1039,18 +1462,14 @@ export function AdminManagementPanel() {
                 disabled={uploadingFile}
                 className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
               >
-                {uploadingFile
-                  ? 'Uploading PDF...'
-                  : editingNewsletter
-                  ? 'Save Changes'
-                  : 'Publish Newsletter'}
+                {uploadingFile ? 'Uploading PDF...' : editingNewsletter ? 'Save Changes' : 'Publish Newsletter'}
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ===================== EVENT MODAL ===================== */}
+      {/* ═══════════════ MODAL: EVENT ═══════════════ */}
       {showEventModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1076,10 +1495,8 @@ export function AdminManagementPanel() {
                 </label>
                 <textarea
                   value={eventForm.description}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, description: e.target.value })
-                  }
-                  placeholder="e.g., Easter is coming and we are hosting an Easter Egg Hunt for the dogs! Bring your furry friend for a fun morning of treats and surprises..."
+                  onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                  placeholder="e.g., Easter is coming and we are hosting an Easter Egg Hunt for the dogs!..."
                   rows={5}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm resize-none"
                 />
@@ -1093,15 +1510,12 @@ export function AdminManagementPanel() {
                   <Input
                     type="date"
                     value={eventForm.event_date}
-                    onChange={(e) =>
-                      setEventForm({ ...eventForm, event_date: e.target.value })
-                    }
+                    onChange={(e) => setEventForm({ ...eventForm, event_date: e.target.value })}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Location{' '}
-                    <span className="text-gray-400 font-normal">(optional)</span>
+                    Location <span className="text-gray-400 font-normal">(optional)</span>
                   </label>
                   <Input
                     value={eventForm.location}
@@ -1111,29 +1525,21 @@ export function AdminManagementPanel() {
                 </div>
               </div>
 
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer w-fit">
-                  <input
-                    type="checkbox"
-                    checked={eventForm.published}
-                    onChange={(e) =>
-                      setEventForm({ ...eventForm, published: e.target.checked })
-                    }
-                    className="w-4 h-4 rounded border-gray-300 accent-[rgb(0_32_96)]"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Publish immediately</span>
-                </label>
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer w-fit">
+                <input
+                  type="checkbox"
+                  checked={eventForm.published}
+                  onChange={(e) => setEventForm({ ...eventForm, published: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 accent-[rgb(0_32_96)]"
+                />
+                <span className="text-sm font-medium text-gray-700">Publish immediately</span>
+              </label>
             </div>
 
             <div className="flex gap-3 mt-6">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setShowEventModal(false);
-                  setEditingEvent(null);
-                  resetEventForm();
-                }}
+                onClick={() => { setShowEventModal(false); setEditingEvent(null); resetEventForm(); }}
                 className="flex-1"
               >
                 Cancel

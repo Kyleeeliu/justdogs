@@ -206,3 +206,19 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  const user = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  if (user.role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'Booking id is required' }, { status: 400 });
+
+  const supabase = getServiceRoleClient() ?? createSupabaseServerClient(request);
+  const { error } = await supabase.from('bookings').delete().eq('id', id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ success: true });
+}
