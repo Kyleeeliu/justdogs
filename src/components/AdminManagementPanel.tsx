@@ -158,6 +158,14 @@ export function AdminManagementPanel() {
   // ── Trainers ──
   const [allTrainers, setAllTrainers] = useState<Trainer[]>([]);
   const [trainerFilter, setTrainerFilter] = useState<TrainerFilter>('all');
+  const [showCreateTrainer, setShowCreateTrainer] = useState(false);
+  const [createTrainerForm, setCreateTrainerForm] = useState({
+    email: '',
+    full_name: '',
+    phone: '',
+    password: '',
+  });
+  const [createTrainerError, setCreateTrainerError] = useState<string | null>(null);
 
   // ── Newsletters ──
   const [newsletters, setNewsletters] = useState<NewsItem[]>([]);
@@ -389,6 +397,38 @@ export function AdminManagementPanel() {
       await loadData();
     } catch (error: any) {
       alert(error.message || `Failed to ${status} trainer.`);
+    }
+  };
+
+  const handleCreateTrainer = async () => {
+    setCreateTrainerError(null);
+    if (
+      !createTrainerForm.email.trim() ||
+      !createTrainerForm.full_name.trim() ||
+      !createTrainerForm.password.trim()
+    ) {
+      setCreateTrainerError('Email, full name, and password are required.');
+      return;
+    }
+    try {
+      const res = await authenticatedFetch('/api/admin/trainers', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: createTrainerForm.email.trim(),
+          full_name: createTrainerForm.full_name.trim(),
+          phone: createTrainerForm.phone.trim() || undefined,
+          password: createTrainerForm.password.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as any).error || 'Failed to create trainer');
+      }
+      setShowCreateTrainer(false);
+      setCreateTrainerForm({ email: '', full_name: '', phone: '', password: '' });
+      await loadData();
+    } catch (error: any) {
+      setCreateTrainerError(error.message || 'Failed to create trainer');
     }
   };
 
@@ -787,8 +827,9 @@ export function AdminManagementPanel() {
         {/* ═══════════════ TRAINER APPROVALS TAB ═══════════════ */}
         {activeTab === 'trainers' && (
           <div className="p-6">
-            {/* Filter */}
-            <div className="flex flex-wrap gap-1.5 mb-5">
+            {/* Header: filter + Create trainer */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              <div className="flex flex-wrap gap-1.5">
               {(['all', 'pending', 'approved', 'rejected'] as TrainerFilter[]).map((f) => {
                 const count =
                   f === 'all'
@@ -808,8 +849,21 @@ export function AdminManagementPanel() {
                   >
                     {f} ({count})
                   </button>
-                );
-              })}
+                  );
+                })}
+              </div>
+              <Button
+                size="sm"
+                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] flex-shrink-0"
+                onClick={() => {
+                  setCreateTrainerError(null);
+                  setCreateTrainerForm({ email: '', full_name: '', phone: '' });
+                  setShowCreateTrainer(true);
+                }}
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Create Trainer
+              </Button>
             </div>
 
             {filteredTrainers.length === 0 ? (
@@ -1328,6 +1382,87 @@ export function AdminManagementPanel() {
                 className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
               >
                 Create Booking
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL: CREATE TRAINER ═══════════════ */}
+      {showCreateTrainer && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-5">Create Trainer</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Create a trainer account with a password. Share these credentials securely with the trainer so they can log in.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="email"
+                  value={createTrainerForm.email}
+                  onChange={(e) => setCreateTrainerForm({ ...createTrainerForm, email: e.target.value })}
+                  placeholder="trainer@example.com"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Full name <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  value={createTrainerForm.full_name}
+                  onChange={(e) => setCreateTrainerForm({ ...createTrainerForm, full_name: e.target.value })}
+                  placeholder="Jane Smith"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Temporary password <span className="text-red-500">*</span>{' '}
+                  <span className="text-gray-400 font-normal text-xs">(at least 8 characters)</span>
+                </label>
+                <Input
+                  type="password"
+                  value={createTrainerForm.password}
+                  onChange={(e) => setCreateTrainerForm({ ...createTrainerForm, password: e.target.value })}
+                  placeholder="Choose a secure password"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone (optional)</label>
+                <Input
+                  type="tel"
+                  value={createTrainerForm.phone}
+                  onChange={(e) => setCreateTrainerForm({ ...createTrainerForm, phone: e.target.value })}
+                  placeholder="+27 82 123 4567"
+                  className="w-full"
+                />
+              </div>
+              {createTrainerError && (
+                <p className="text-sm text-red-600">{createTrainerError}</p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCreateTrainer(false);
+                  setCreateTrainerError(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateTrainer}
+                className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+              >
+                Create Trainer
               </Button>
             </div>
           </div>

@@ -556,6 +556,11 @@ export default function DogsPage() {
                     <div>
                       <CardTitle className="text-xl">{dog.name}</CardTitle>
                       <CardDescription className="text-sm">{dog.breed}</CardDescription>
+                      {dog.owner_name && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Owner: <span className="font-medium text-gray-700">{dog.owner_name}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -671,6 +676,12 @@ export default function DogsPage() {
                     <p className="text-sm text-gray-500 mb-1">Breed</p>
                     <p className="font-medium text-gray-900">{selectedDog.breed}</p>
                   </div>
+                  {selectedDog.owner_name && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Owner</p>
+                      <p className="font-medium text-gray-900">{selectedDog.owner_name}</p>
+                    </div>
+                  )}
                   {selectedDog.weight && (
                     <div>
                       <p className="text-sm text-gray-500 mb-1">Weight</p>

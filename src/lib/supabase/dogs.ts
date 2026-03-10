@@ -44,7 +44,7 @@ export const createDog = async (
 export const getAllDogs = async (): Promise<Dog[]> => {
   const { data, error } = await supabase
     .from(DOGS_TABLE)
-    .select('*')
+    .select('*, owner:users!dogs_owner_id_fkey(full_name, email)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -52,13 +52,18 @@ export const getAllDogs = async (): Promise<Dog[]> => {
     return localDogs.getAllDogs();
   }
 
-  return (data ?? []) as Dog[];
+  const rows = (data ?? []) as any[];
+  return rows.map((row) => ({
+    ...(row as Dog),
+    owner_name: row.owner?.full_name ?? undefined,
+    owner_email: row.owner?.email ?? undefined,
+  }));
 };
 
 export const getDogsByOwner = async (ownerId: string): Promise<Dog[]> => {
   const { data, error } = await supabase
     .from(DOGS_TABLE)
-    .select('*')
+    .select('*, owner:users!dogs_owner_id_fkey(full_name, email)')
     .eq('owner_id', ownerId)
     .order('created_at', { ascending: false });
 
@@ -67,13 +72,18 @@ export const getDogsByOwner = async (ownerId: string): Promise<Dog[]> => {
     return [];
   }
 
-  return (data ?? []) as Dog[];
+  const rows = (data ?? []) as any[];
+  return rows.map((row) => ({
+    ...(row as Dog),
+    owner_name: row.owner?.full_name ?? undefined,
+    owner_email: row.owner?.email ?? undefined,
+  }));
 };
 
 export const getDogById = async (id: string): Promise<Dog | null> => {
   const { data, error } = await supabase
     .from(DOGS_TABLE)
-    .select('*')
+    .select('*, owner:users!dogs_owner_id_fkey(full_name, email)')
     .eq('id', id)
     .single();
 
@@ -83,7 +93,12 @@ export const getDogById = async (id: string): Promise<Dog | null> => {
     return null;
   }
 
-  return data as Dog;
+  const row = data as any;
+  return {
+    ...(row as Dog),
+    owner_name: row.owner?.full_name ?? undefined,
+    owner_email: row.owner?.email ?? undefined,
+  };
 };
 
 /* =========================
@@ -137,7 +152,7 @@ export const searchDogs = async (
 ): Promise<Dog[]> => {
   let query = supabase
     .from(DOGS_TABLE)
-    .select('*')
+    .select('*, owner:users!dogs_owner_id_fkey(full_name, email)')
     .or(`name.ilike.%${searchTerm}%,breed.ilike.%${searchTerm}%`);
 
   if (ownerId) {
@@ -153,5 +168,10 @@ export const searchDogs = async (
     return [];
   }
 
-  return (data ?? []) as Dog[];
+  const rows = (data ?? []) as any[];
+  return rows.map((row) => ({
+    ...(row as Dog),
+    owner_name: row.owner?.full_name ?? undefined,
+    owner_email: row.owner?.email ?? undefined,
+  }));
 };

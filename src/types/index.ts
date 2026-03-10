@@ -20,6 +20,8 @@ export interface Dog {
   age: number;
   weight?: number;
   owner_id: string;
+  owner_name?: string;
+  owner_email?: string;
   medical_notes?: string;
   behavioral_notes?: string;
   vaccine_records?: string;

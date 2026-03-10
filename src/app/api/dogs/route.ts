@@ -4,11 +4,24 @@ import { getServerUser, createSupabaseServerClient } from '@/lib/supabase/server
 import { createClient } from '@supabase/supabase-js';
 import { Dog } from '@/types';
 
+// Map API rows (with nested owner) to Dog with owner_name/owner_email; strip nested relation
+function mapDogsWithOwner(rows: any[]): Dog[] {
+  return (rows ?? []).map((row: any) => {
+    const { owner, users, ...dog } = row;
+    const ownerData = owner ?? users ?? null;
+    return {
+      ...dog,
+      owner_name: ownerData?.full_name ?? undefined,
+      owner_email: ownerData?.email ?? undefined,
+    } as Dog;
+  });
+}
+
 // Server-side functions for fetching dogs (use server client instead of client-side functions)
 async function getAllDogsServer(supabase: any): Promise<Dog[]> {
   const { data, error } = await supabase
     .from('dogs')
-    .select('*')
+    .select('*, owner:users!dogs_owner_id_fkey(full_name, email)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -16,13 +29,13 @@ async function getAllDogsServer(supabase: any): Promise<Dog[]> {
     throw error;
   }
 
-  return (data ?? []) as Dog[];
+  return mapDogsWithOwner((data ?? []) as any[]);
 }
 
 async function getDogsByOwnerServer(supabase: any, ownerId: string): Promise<Dog[]> {
   const { data, error } = await supabase
     .from('dogs')
-    .select('*')
+    .select('*, owner:users!dogs_owner_id_fkey(full_name, email)')
     .eq('owner_id', ownerId)
     .order('created_at', { ascending: false });
 
@@ -31,7 +44,7 @@ async function getDogsByOwnerServer(supabase: any, ownerId: string): Promise<Dog
     throw error;
   }
 
-  return (data ?? []) as Dog[];
+  return mapDogsWithOwner((data ?? []) as any[]);
 }
 
 // Server-side function for creating dogs (only columns that exist in dogs table)
