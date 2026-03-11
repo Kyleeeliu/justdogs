@@ -50,17 +50,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
 
-    let users;
-    if (role) {
-      users = await getUsersByRole(role);
-    } else {
-      users = await getAllUsers();
+    // Use service role to bypass RLS — anon client silently returns empty when policies block reads
+    const supabase = getServiceRoleClient();
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      users
-    });
+    let query = supabase.from('users').select('*').order('created_at', { ascending: false });
+    if (role) query = query.eq('role', role) as typeof query;
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error fetching users:', error);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, users: data ?? [] });
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json(
