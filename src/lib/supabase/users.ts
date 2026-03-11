@@ -318,6 +318,12 @@ export const getCurrentSupabaseUser = async (): Promise<User | null> => {
     }
 
     console.log('getCurrentSupabaseUser: User profile loaded successfully');
+
+    // Deactivated trainers keep their account but appear as regular parents everywhere
+    if (user.role === 'trainer' && (user as any).approval_status === 'deactivated') {
+      return { ...user, role: 'parent' as any };
+    }
+
     return user;
   } catch (error) {
     console.error('getCurrentSupabaseUser: Unexpected exception:', {

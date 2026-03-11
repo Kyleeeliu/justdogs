@@ -102,7 +102,7 @@ interface BookingCreateState {
 
 type TabType = 'bookings' | 'trainers' | 'newsletters' | 'events';
 type BookingFilter = 'all' | 'pending' | 'confirmed' | 'cancelled' | 'completed';
-type TrainerFilter = 'all' | 'pending' | 'approved' | 'rejected';
+type TrainerFilter = 'all' | 'pending' | 'current' | 'deactivated';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -382,10 +382,10 @@ export function AdminManagementPanel() {
 
   // ─── Trainer Handlers ─────────────────────────────────────────────────────
 
-  const handleTrainerStatus = async (trainerId: string, status: 'approved' | 'rejected') => {
+  const handleTrainerStatus = async (trainerId: string, status: 'approved' | 'deactivated') => {
     if (
-      status === 'rejected' &&
-      !confirm('Reject this trainer? They will not be able to log in.')
+      status === 'deactivated' &&
+      !confirm('Deactivate this trainer? Their account will switch to a regular parent view. You can reactivate them at any time.')
     )
       return;
     try {
@@ -625,7 +625,7 @@ export function AdminManagementPanel() {
   const filteredTrainers =
     trainerFilter === 'all'
       ? allTrainers
-      : trainerFilter === 'approved'
+      : trainerFilter === 'current'
       ? allTrainers.filter((t) => !t.approval_status || t.approval_status === 'approved')
       : allTrainers.filter((t) => t.approval_status === trainerFilter);
 
@@ -656,7 +656,7 @@ export function AdminManagementPanel() {
     },
     {
       id: 'trainers',
-      label: 'Trainer Approvals',
+      label: 'Trainers',
       count: pendingTrainerCount || undefined,
       icon: <UserIcon className="h-4 w-4" />,
     },
@@ -824,31 +824,38 @@ export function AdminManagementPanel() {
           </div>
         )}
 
-        {/* ═══════════════ TRAINER APPROVALS TAB ═══════════════ */}
+        {/* ═══════════════ TRAINERS TAB ═══════════════ */}
         {activeTab === 'trainers' && (
           <div className="p-6">
             {/* Header: filter + Create trainer */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
               <div className="flex flex-wrap gap-1.5">
-              {(['all', 'pending', 'approved', 'rejected'] as TrainerFilter[]).map((f) => {
-                const count =
-                  f === 'all'
-                    ? allTrainers.length
-                    : f === 'approved'
-                    ? allTrainers.filter((t) => !t.approval_status || t.approval_status === 'approved').length
-                    : allTrainers.filter((t) => t.approval_status === f).length;
-                return (
-                  <button
-                    key={f}
-                    onClick={() => setTrainerFilter(f)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium capitalize transition-colors ${
-                      trainerFilter === f
-                        ? 'bg-[rgb(0_32_96)] text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {f} ({count})
-                  </button>
+                {(
+                  [
+                    { value: 'all', label: 'All' },
+                    { value: 'pending', label: 'Pending Approval' },
+                    { value: 'current', label: 'Current Trainers' },
+                    { value: 'deactivated', label: 'Deactivated' },
+                  ] as Array<{ value: TrainerFilter; label: string }>
+                ).map(({ value: f, label }) => {
+                  const count =
+                    f === 'all'
+                      ? allTrainers.length
+                      : f === 'current'
+                      ? allTrainers.filter((t) => !t.approval_status || t.approval_status === 'approved').length
+                      : allTrainers.filter((t) => t.approval_status === f).length;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setTrainerFilter(f)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        trainerFilter === f
+                          ? 'bg-[rgb(0_32_96)] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {label} ({count})
+                    </button>
                   );
                 })}
               </div>
@@ -873,15 +880,19 @@ export function AdminManagementPanel() {
                 <p className="text-sm mt-1">
                   {trainerFilter === 'pending'
                     ? 'No pending applications'
-                    : `No ${trainerFilter} trainers`}
+                    : trainerFilter === 'current'
+                    ? 'No active trainers yet'
+                    : trainerFilter === 'deactivated'
+                    ? 'No deactivated trainers'
+                    : 'No trainers found'}
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
                 {filteredTrainers.map((trainer) => {
-                  const isApproved = !trainer.approval_status || trainer.approval_status === 'approved';
+                  const isCurrent = !trainer.approval_status || trainer.approval_status === 'approved';
                   const isPending = trainer.approval_status === 'pending';
-                  const isRejected = trainer.approval_status === 'rejected';
+                  const isDeactivated = trainer.approval_status === 'deactivated';
                   return (
                     <div
                       key={trainer.id}
@@ -892,17 +903,17 @@ export function AdminManagementPanel() {
                           <span className="font-semibold text-gray-900">{trainer.full_name}</span>
                           {isPending && (
                             <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
-                              Pending Review
+                              Pending Approval
                             </span>
                           )}
-                          {isApproved && (
+                          {isCurrent && (
                             <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
-                              Approved
+                              Active Trainer
                             </span>
                           )}
-                          {isRejected && (
-                            <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full font-medium">
-                              Rejected
+                          {isDeactivated && (
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full font-medium">
+                              Deactivated
                             </span>
                           )}
                         </div>
@@ -917,7 +928,7 @@ export function AdminManagementPanel() {
                         </p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
-                        {(isPending || isRejected) && (
+                        {isPending && (
                           <Button
                             size="sm"
                             className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -927,15 +938,25 @@ export function AdminManagementPanel() {
                             Approve
                           </Button>
                         )}
-                        {(isPending || isApproved) && (
+                        {isDeactivated && (
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => handleTrainerStatus(trainer.id, 'approved')}
+                          >
+                            <CheckIcon className="h-4 w-4 mr-1" />
+                            Reactivate
+                          </Button>
+                        )}
+                        {isCurrent && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => handleTrainerStatus(trainer.id, 'rejected')}
+                            onClick={() => handleTrainerStatus(trainer.id, 'deactivated')}
                           >
                             <XMarkIcon className="h-4 w-4 mr-1" />
-                            {isPending ? 'Reject' : 'Revoke'}
+                            Deactivate
                           </Button>
                         )}
                       </div>
