@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase/client';
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -247,7 +247,7 @@ export default function ResetPasswordPage() {
                   </div>
                 </div>
               )}
-              
+
               <Input
                 id="password"
                 type="password"
@@ -258,7 +258,7 @@ export default function ResetPasswordPage() {
                 required
                 minLength={6}
               />
-              
+
               <Input
                 id="confirmPassword"
                 type="password"
@@ -269,7 +269,7 @@ export default function ResetPasswordPage() {
                 required
                 minLength={6}
               />
-              
+
               <Button
                 type="submit"
                 className="w-full bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
@@ -283,5 +283,17 @@ export default function ResetPasswordPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(0_32_96)]" />
+      </div>
+    }>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
