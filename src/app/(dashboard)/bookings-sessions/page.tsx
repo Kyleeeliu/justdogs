@@ -9,7 +9,6 @@ import {
   ClockIcon,
   CheckCircleIcon,
   XCircleIcon,
-  DocumentTextIcon,
   MagnifyingGlassIcon,
   CheckIcon,
   XMarkIcon,
@@ -24,8 +23,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { Booking, BookingStatus, Dog, User } from '@/types';
 import { authenticatedGet, authenticatedFetch } from '@/lib/api/apiClient';
 import { formatDateTime, formatTime } from '@/lib/utils';
-import { getDogById, getAllDogs, getDogsByOwner } from '@/lib/supabase/dogs';
-import { getUserById, getUsersByRole } from '@/lib/supabase/users';
+import { getAllDogs, getDogsByOwner } from '@/lib/supabase/dogs';
+import { getUsersByRole } from '@/lib/supabase/users';
 import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
 
 interface BookingWithDetails extends Booking {
@@ -66,33 +65,16 @@ export default function BookingsSessionsPage() {
     const data = await res.json();
     console.log('✅ Bookings data received:', data);
     console.log('📊 Raw bookings count:', data.length);
-    const bookingsArray: Booking[] = Array.isArray(data) ? data : [];
-
     // Server already filtered by role, so use all returned bookings
-    const visible = bookingsArray;
-
-    console.log('📋 Visible bookings before fetching details:', visible.length);
-
-    // Fetch related data (dogs, trainers, parents)
-    const bookingsWithDetails = await Promise.all(
-      visible.map(async (booking) => {
-        const [dog, trainer, parent] = await Promise.all([
-          getDogById(booking.dog_id).catch(() => null),
-          booking.trainer_id ? getUserById(booking.trainer_id).catch(() => null) : null,
-          booking.parent_id ? getUserById(booking.parent_id).catch(() => null) : null,
-        ]);
-
-        return {
-          ...booking,
-          dog: dog || undefined,
-          trainer: trainer || undefined,
-          parent: parent || undefined,
-        };
-      })
-    );
+    // Use joined data from API response (dogs/trainers/parents) to avoid separate RLS-prone calls
+    const bookingsWithDetails: BookingWithDetails[] = (Array.isArray(data) ? data : []).map((b: any) => ({
+      ...b,
+      dog: b.dogs ? { id: b.dog_id, name: b.dogs.name, breed: b.dogs.breed } : undefined,
+      trainer: b.trainers ? { id: b.trainer_id, full_name: b.trainers.full_name } : undefined,
+      parent: b.parents ? { id: b.parent_id, full_name: b.parents.full_name } : undefined,
+    }));
 
     console.log('📊 Bookings with details:', bookingsWithDetails.length);
-    console.log('First booking with details:', bookingsWithDetails[0]);
     setBookings(bookingsWithDetails);
   } catch (err) {
     console.error('💥 Error loading bookings:', err);
@@ -204,7 +186,7 @@ export default function BookingsSessionsPage() {
     await loadBookings();
   } catch (error) {
     console.error('Error updating booking status:', error);
-    alert('Failed to update booking status: ' + error.message);
+    alert('Failed to update booking status: ' + (error instanceof Error ? error.message : String(error)));
   }
 };
 
@@ -481,10 +463,22 @@ export default function BookingsSessionsPage() {
                                         <span>{booking.dog.name}</span>
                                       </div>
                                     )}
-                                    {booking.trainer && (
+                                    {booking.parent && (user?.role === 'admin' || user?.role === 'trainer') && (
+                                      <div className="flex items-center gap-1">
+                                        <UserGroupIcon className="h-4 w-4" />
+                                        <span>{booking.parent.full_name}</span>
+                                      </div>
+                                    )}
+                                    {booking.trainer && user?.role !== 'trainer' && (
                                       <div className="flex items-center gap-1">
                                         <UserGroupIcon className="h-4 w-4" />
                                         <span>{booking.trainer.full_name}</span>
+                                      </div>
+                                    )}
+                                    {booking.location && (
+                                      <div className="flex items-center gap-1">
+                                        <MapPinIcon className="h-4 w-4" />
+                                        <span className="truncate max-w-[200px]">{booking.location}</span>
                                       </div>
                                     )}
                                   </div>
@@ -567,7 +561,7 @@ export default function BookingsSessionsPage() {
                                       <span className="font-medium text-gray-900">{booking.trainer.full_name}</span>
                                     </div>
                                   )}
-                                  {booking.parent && user?.role === 'admin' && (
+                                  {booking.parent && (user?.role === 'admin' || user?.role === 'trainer') && (
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">Owner:</span>
                                       <span className="font-medium text-gray-900">{booking.parent.full_name}</span>
@@ -576,11 +570,21 @@ export default function BookingsSessionsPage() {
                                 </div>
                               </div>
                             </div>
-                            {booking.special_instructions && (
+                            {booking.location && (
                               <div>
-                                <h4 className="text-sm font-medium text-gray-700 mb-2">Special Instructions</h4>
+                                <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                  <MapPinIcon className="h-4 w-4" /> Session Address
+                                </h4>
                                 <p className="text-sm text-gray-600 bg-white p-3 rounded border border-gray-200">
-                                  {booking.special_instructions}
+                                  {booking.location}
+                                </p>
+                              </div>
+                            )}
+                            {(booking.notes || booking.special_instructions) && (
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-700 mb-2">Notes</h4>
+                                <p className="text-sm text-gray-600 bg-white p-3 rounded border border-gray-200">
+                                  {booking.notes || booking.special_instructions}
                                 </p>
                               </div>
                             )}

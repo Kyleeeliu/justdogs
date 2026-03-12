@@ -53,6 +53,7 @@ interface Booking {
   start_time: string;
   end_time: string | null;
   notes: string | null;
+  location: string | null;
   created_at: string;
   status: string;
 }
@@ -87,6 +88,7 @@ interface BookingEditState {
   start_time: string;
   end_time: string;
   notes: string;
+  location: string;
   status: string;
   trainer_id: string;
 }
@@ -98,6 +100,7 @@ interface BookingCreateState {
   start_time: string;
   end_time: string;
   notes: string;
+  location: string;
 }
 
 type TabType = 'bookings' | 'trainers' | 'newsletters' | 'events';
@@ -152,6 +155,7 @@ export function AdminManagementPanel() {
     start_time: '',
     end_time: '',
     notes: '',
+    location: '',
   };
   const [createForm, setCreateForm] = useState<BookingCreateState>(emptyCreate);
 
@@ -234,6 +238,7 @@ export function AdminManagementPanel() {
           start_time: b.start_time,
           end_time: b.end_time ?? null,
           notes: b.notes ?? null,
+          location: b.location ?? null,
           created_at: b.created_at,
           status: b.status,
         }));
@@ -296,6 +301,7 @@ export function AdminManagementPanel() {
       start_time: toLocalInput(b.start_time),
       end_time: toLocalInput(b.end_time),
       notes: b.notes || '',
+      location: b.location || '',
       status: b.status,
       trainer_id: b.trainer_id || '',
     });
@@ -317,6 +323,7 @@ export function AdminManagementPanel() {
           ? new Date(editingBooking.end_time).toISOString()
           : null,
         notes: editingBooking.notes || null,
+        location: editingBooking.location || null,
         status: editingBooking.status,
         trainer_id: editingBooking.trainer_id || null,
       };
@@ -362,6 +369,7 @@ export function AdminManagementPanel() {
         start_time: new Date(createForm.start_time).toISOString(),
         end_time: createForm.end_time ? new Date(createForm.end_time).toISOString() : null,
         notes: createForm.notes || null,
+        location: createForm.location || null,
         trainer_id: createForm.trainer_id || null,
       };
       const res = await authenticatedFetch('/api/bookings', {
@@ -617,9 +625,15 @@ export function AdminManagementPanel() {
 
   // ─── Derived data ─────────────────────────────────────────────────────────
 
+  const now = new Date();
+  const isCompleted = (b: Booking) =>
+    b.status === 'completed' || (new Date(b.start_time) < now && b.status !== 'cancelled');
+
   const filteredBookings =
     bookingFilter === 'all'
       ? allBookings
+      : bookingFilter === 'completed'
+      ? allBookings.filter(isCompleted)
       : allBookings.filter((b) => b.status === bookingFilter);
 
   const filteredTrainers =
@@ -723,6 +737,8 @@ export function AdminManagementPanel() {
                     const count =
                       f === 'all'
                         ? allBookings.length
+                        : f === 'completed'
+                        ? allBookings.filter(isCompleted).length
                         : allBookings.filter((b) => b.status === f).length;
                     return (
                       <button
@@ -788,6 +804,11 @@ export function AdminManagementPanel() {
                           {booking.trainer_name || 'Unassigned'}
                         </span>
                       </p>
+                      {booking.location && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          📍 {booking.location}
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-1.5 flex-shrink-0">
                       <Button
@@ -864,7 +885,7 @@ export function AdminManagementPanel() {
                 className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] flex-shrink-0"
                 onClick={() => {
                   setCreateTrainerError(null);
-                  setCreateTrainerForm({ email: '', full_name: '', phone: '' });
+                  setCreateTrainerForm({ email: '', full_name: '', phone: '', password: '' });
                   setShowCreateTrainer(true);
                 }}
               >
@@ -1264,6 +1285,18 @@ export function AdminManagementPanel() {
                 </select>
               </div>
 
+              {(editingBooking.booking_type === 'behavior_and_home' || editingBooking.booking_type === 'service_and_emotional_support') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Session Address</label>
+                  <Input
+                    value={editingBooking.location}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, location: e.target.value })}
+                    placeholder="Enter the home/session address"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">The trainer will visit this address.</p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
                 <textarea
@@ -1359,6 +1392,20 @@ export function AdminManagementPanel() {
                   />
                 </div>
               </div>
+
+              {(createForm.booking_type === 'behavior_and_home' || createForm.booking_type === 'service_and_emotional_support') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Session Address <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={createForm.location}
+                    onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })}
+                    placeholder="Enter the home/session address"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">The trainer will visit this address.</p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Trainer</label>

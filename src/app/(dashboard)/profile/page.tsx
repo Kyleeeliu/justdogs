@@ -73,6 +73,12 @@ export default function ProfilePage() {
       }
 
       setUser(result.user);
+      setFormData({
+        full_name: result.user.full_name || '',
+        email: result.user.email || '',
+        phone: result.user.phone || '',
+        role: result.user.role || '',
+      });
       setEditing(false);
     } catch (error: any) {
       console.error('Error updating profile:', error);

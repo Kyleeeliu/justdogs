@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { XMarkIcon, CalendarIcon, ClockIcon, UserIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, CalendarIcon, ClockIcon, UserIcon, DocumentTextIcon, MapPinIcon } from '@heroicons/react/24/outline';
 
 export interface BookingFormData {
   dog_id: string;
@@ -12,6 +12,7 @@ export interface BookingFormData {
   start_time: string;
   end_time: string;
   notes?: string;
+  location?: string;
   trainer_id?: string;
   parent_id?: string;
   recurring?: boolean;
@@ -51,6 +52,7 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
     start_time: '',
     end_time: '',
     notes: '',
+    location: '',
     trainer_id: '',
     recurring: false,
     recurring_pattern: 'weekly',
@@ -69,6 +71,7 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
         start_time: toLocalDatetimeLocal(now),
         end_time: toLocalDatetimeLocal(endTime),
         notes: '',
+        location: '',
         trainer_id: '',
         recurring: false,
         recurring_pattern: 'weekly',
@@ -186,6 +189,25 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
               </select>
               {errors.booking_type && <p className="text-sm text-red-600">{errors.booking_type}</p>}
             </div>
+
+            {(formData.booking_type === 'behavior_and_home' || formData.booking_type === 'service_and_emotional_support') && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Session Address <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <MapPinIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    value={formData.location || ''}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    placeholder="Enter the home/session address"
+                    className="pl-9"
+                    disabled={submitting}
+                  />
+                </div>
+                <p className="text-xs text-gray-500">The trainer will visit this address for the session.</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">

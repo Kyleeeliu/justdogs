@@ -10,18 +10,10 @@ async function getAuthenticatedUser(request: NextRequest) {
   const authUser = await getServerUser(request);
   if (!authUser) return null;
 
-  const supabase = createSupabaseServerClient(request);
-
-  // Fetch role from profiles or users table
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', authUser.id)
-    .single();
-
-  if (profile?.role) {
-    return { ...authUser, role: profile.role };
-  }
+  // Use service role to bypass RLS — anon/session client is blocked by RLS and silently
+  // returns no row, causing the role to fall back to 'parent' for trainers and admins.
+  const supabase = getServiceRoleClient();
+  if (!supabase) return { ...authUser, role: 'parent' };
 
   const { data: userRow } = await supabase
     .from('users')
@@ -29,18 +21,7 @@ async function getAuthenticatedUser(request: NextRequest) {
     .eq('id', authUser.id)
     .single();
 
-  // If session client can't read users (e.g. Bearer-only), try anon client (users table often allows read)
-  let role = userRow?.role;
-  if (role === undefined && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    const anon = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    );
-    const { data: row } = await anon.from('users').select('role').eq('id', authUser.id).single();
-    role = row?.role;
-  }
-
-  return { ...authUser, role: role || 'parent' };
+  return { ...authUser, role: userRow?.role || 'parent' };
 }
 
 /** Create a Supabase client with service role to bypass RLS (use only after validating user server-side). */
@@ -64,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase.from('bookings').select(`
     *,
-    dogs(name),
+    dogs(name, breed),
     trainers:trainer_id(full_name),
     parents:parent_id(full_name)
   `);
@@ -106,6 +87,7 @@ export async function POST(request: NextRequest) {
       start_time: body.start_time,
       end_time: body.end_time || body.start_time,
       notes: body.notes || null,
+      location: body.location || null,
       status: status,
       updated_at: new Date().toISOString(),
     };

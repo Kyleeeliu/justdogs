@@ -54,6 +54,7 @@ export interface Booking {
   start_time: string;
   end_time: string;
   special_instructions?: string;
+  notes?: string;
   location?: string;
   created_at: string;
   updated_at: string;

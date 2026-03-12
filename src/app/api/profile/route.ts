@@ -40,6 +40,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Keep Supabase auth metadata in sync so getCurrentUser() returns the correct name
+    // even if the users table query is blocked by RLS on the client side.
+    if (updates.full_name !== undefined) {
+      await supabaseAdmin.auth.admin.updateUserById(user.id, {
+        user_metadata: { full_name: updates.full_name },
+      });
+    }
+
     return NextResponse.json({ success: true, user: data });
   } catch (error: any) {
     console.error('[Profile] Unexpected error:', error);
