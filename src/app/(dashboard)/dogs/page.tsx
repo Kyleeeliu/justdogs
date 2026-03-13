@@ -39,6 +39,12 @@ interface DogFormData {
   emergency_contact_relationship: string;
 }
 
+interface ParentOption {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
 export default function DogsPage() {
   const { user, loading: authLoading } = useAuth();
   const [dogs, setDogs] = useState<Dog[]>([]);
@@ -54,6 +60,10 @@ export default function DogsPage() {
   const [showAssessmentBot, setShowAssessmentBot] = useState(false);
   const [showCodeInput, setShowCodeInput] = useState(false);
   
+  // Parents list for admin owner assignment
+  const [parents, setParents] = useState<ParentOption[]>([]);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
+
   // Selected dog and form data
   const [selectedDog, setSelectedDog] = useState<Dog | null>(null);
   const [assessmentCode, setAssessmentCode] = useState('');
@@ -70,6 +80,19 @@ export default function DogsPage() {
     emergency_contact_phone: '',
     emergency_contact_relationship: ''
   });
+
+  // Load parents list for admin owner assignment
+  const loadParents = async () => {
+    try {
+      const res = await authenticatedGet('/api/users?role=parent');
+      if (res.ok) {
+        const data = await res.json();
+        setParents(Array.isArray(data.users) ? data.users : []);
+      }
+    } catch (error) {
+      console.error('Error loading parents:', error);
+    }
+  };
 
   // Load dogs from API
   const loadDogs = async () => {
@@ -225,7 +248,7 @@ export default function DogsPage() {
       } else {
         // Create new dog
         const createResponse = await authenticatedPost('/api/dogs', {
-          owner_id: user?.id,
+          owner_id: (user?.role === 'admin' && selectedOwnerId) ? selectedOwnerId : user?.id,
           name: formData.name,
           breed: formData.breed,
           age: parseInt(formData.age) || 0,
@@ -333,6 +356,7 @@ export default function DogsPage() {
       emergency_contact_phone: '',
       emergency_contact_relationship: ''
     });
+    setSelectedOwnerId('');
   };
 
   // Open edit modal
@@ -471,9 +495,10 @@ export default function DogsPage() {
               <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2" />
               AI Assessment
             </Button>
-            <Button 
+            <Button
               onClick={() => {
                 resetForm();
+                if (user?.role === 'admin') loadParents();
                 setShowAddModal(true);
               }}
             >
@@ -620,6 +645,7 @@ export default function DogsPage() {
             {!searchTerm && (user?.role === 'admin' || user?.role === 'parent') && (
               <Button onClick={() => {
                 resetForm();
+                if (user?.role === 'admin') loadParents();
                 setShowAddModal(true);
               }}>
                 <PlusIcon className="h-4 w-4 mr-2" />
@@ -812,6 +838,28 @@ export default function DogsPage() {
                 {/* Basic Information */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
+
+                  {/* Owner selector — admin only, add mode */}
+                  {user?.role === 'admin' && showAddModal && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Assign to Parent (Owner)
+                      </label>
+                      <select
+                        value={selectedOwnerId}
+                        onChange={(e) => setSelectedOwnerId(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] focus:border-transparent"
+                      >
+                        <option value="">— Unassigned (keep as admin) —</option>
+                        {parents.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.full_name} ({p.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
