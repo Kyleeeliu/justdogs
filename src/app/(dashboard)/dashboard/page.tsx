@@ -73,11 +73,11 @@ const ParentDogsCard = ({ userId }: { userId: string }) => {
               <div
                 key={dog.id}
                 className={`flex items-center justify-between p-3 rounded-lg ${
-                  index % 2 === 0 ? 'bg-[rgb(0_32_96)] bg-opacity-10' : 'bg-green-50'
+                  index % 2 === 0 ? 'bg-[rgb(0_32_96)]/10' : 'bg-green-50'
                 }`}
               >
                 <div>
-                  <p className="font-medium">{dog.name}</p>
+                  <p className="font-medium text-gray-900">{dog.name}</p>
                   <p className="text-sm text-gray-600">{dog.breed}</p>
                 </div>
                 <Button size="sm" onClick={() => router.push('/dogs')}>
@@ -114,7 +114,7 @@ const TrainerScheduleCard = ({ trainerStats }: { trainerStats: TrainerStats }) =
               <div
                 key={session.id}
                 className={`flex items-center justify-between p-3 rounded-lg ${
-                  index % 2 === 0 ? 'bg-[rgb(0_32_96)] bg-opacity-10' : 'bg-green-50'
+                  index % 2 === 0 ? 'bg-[rgb(0_32_96)]/10' : 'bg-green-50'
                 }`}
               >
                 <div>
@@ -370,38 +370,53 @@ export default function DashboardPage() {
     if (!user) throw new Error('User not found');
 
     try {
-      let parentId = user.id;
+      const startIso = new Date(bookingData.start_time).toISOString();
+      const endIso = new Date(
+        new Date(bookingData.start_time).getTime() + bookingData.duration_minutes * 60_000
+      ).toISOString();
+
+      // Resolve parent_id for each dog (admin may own dogs belonging to parents)
+      let allDogsList: Array<{ id: string; owner_id?: string }> = [];
       if (user.role === 'admin') {
-        const allDogsList = await getAllDogs();
-        const dog = allDogsList.find(d => d.id === bookingData.dog_id);
-        if (!dog) throw new Error('Dog owner not found');
-        parentId = dog.owner_id;
+        allDogsList = await getAllDogs();
       }
 
-      const payload = {
-        ...bookingData,
-        parent_id: parentId,
-        start_time: new Date(bookingData.start_time).toISOString(),
-        end_time: bookingData.end_time ? new Date(bookingData.end_time).toISOString() : null,
-      };
+      for (const dogId of bookingData.dog_ids) {
+        let parentId = user.id;
+        if (user.role === 'admin') {
+          const dog = allDogsList.find(d => d.id === dogId);
+          parentId = dog?.owner_id ?? user.id;
+        }
 
-      const response = await authenticatedPost('/api/bookings', payload);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Server Error' }));
-        throw new Error(errorData.error || 'Failed to create booking');
+        const payload = {
+          dog_id: dogId,
+          booking_type: bookingData.booking_type,
+          start_time: startIso,
+          end_time: endIso,
+          notes: bookingData.notes,
+          location: bookingData.location,
+          trainer_id: bookingData.trainer_id,
+          parent_id: parentId,
+          recurring: bookingData.recurring,
+          recurring_pattern: bookingData.recurring_pattern,
+          recurring_occurrences: bookingData.recurring_occurrences,
+        };
+
+        const response = await authenticatedPost('/api/bookings', payload);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Server Error' }));
+          throw new Error(errorData.error || 'Failed to create booking');
+        }
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || result.message || 'Failed to create booking');
+        }
       }
 
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('Booking created successfully!');
-        setShowCreateModal(false);
-        router.refresh();
-        router.push('/bookings-sessions');
-      } else {
-        throw new Error(result.error || result.message || 'Failed to create booking');
-      }
+      alert(bookingData.dog_ids.length > 1 ? `${bookingData.dog_ids.length} bookings created successfully!` : 'Booking created successfully!');
+      setShowCreateModal(false);
+      router.refresh();
+      router.push('/bookings-sessions');
     } catch (error) {
       console.error('Error creating booking:', error);
       throw error;

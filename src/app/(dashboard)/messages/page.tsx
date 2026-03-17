@@ -25,6 +25,7 @@ import { Message, User, UserRole } from '@/types';
 import { formatDateTime, formatTime } from '@/lib/utils';
 import { getAllUsers, getUsersByRole } from '@/lib/supabase/users';
 import { getAllServices } from '@/lib/supabase/content';
+import { authenticatedGet, authenticatedPost } from '@/lib/api/apiClient';
 import { defaultServices } from '@/lib/data/content';
 import {
   createMessage,
@@ -114,10 +115,26 @@ export default function MessagesPage() {
         setCurrentUser(user);
 
         if (user) {
-          // Load available users for chat
+          // Load all users (for conversation display names) and allowed contacts separately
           const users = await getAllUsers();
+
+          // Load role-restricted contacts for new conversation picker
+          let allowedContacts: User[] = [];
+          try {
+            const contactsRes = await authenticatedGet('/api/messages/contacts');
+            if (contactsRes.ok) {
+              const contactsData = await contactsRes.json();
+              allowedContacts = contactsData.contacts ?? [];
+            } else {
+              // Fallback: same as all users minus self
+              allowedContacts = users.filter(u => u.id !== user.id);
+            }
+          } catch {
+            allowedContacts = users.filter(u => u.id !== user.id);
+          }
+
           if (mounted) {
-            setAvailableUsers(users.filter(u => u.id !== user.id));
+            setAvailableUsers(allowedContacts);
           }
 
           // Load trainers and services for admin announcement filters
@@ -344,12 +361,13 @@ export default function MessagesPage() {
       );
 
       if (unreadMessages.length > 0) {
-        for (const msg of unreadMessages) {
-          try {
-            await markMessageAsRead(msg.id);
-          } catch (error) {
-            console.error('Error marking message as read:', error);
-          }
+        // Use server-side API to mark as read (bypasses RLS)
+        try {
+          await authenticatedPost('/api/messages/mark-read', {
+            message_ids: unreadMessages.map(m => m.id),
+          });
+        } catch (error) {
+          console.error('Error marking messages as read:', error);
         }
 
         // Update local state
@@ -357,6 +375,11 @@ export default function MessagesPage() {
           unreadMessages.some(unread => unread.id === msg.id)
             ? { ...msg, read_at: new Date().toISOString() }
             : msg
+        ));
+
+        // Clear the unread badge for this conversation
+        setConversations(prev => prev.map(conv =>
+          conv.id === conversation.id ? { ...conv, unreadCount: 0 } : conv
         ));
 
         // Emit custom event to notify layout of message read

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(ls -la \"/c/Users/ang3l/Downloads/jsdog-main/src/app/\\(dashboard\\)/bookings\")",
-      "Bash(ls -la \"/c/Users/ang3l/Downloads/jsdog-main/src/app/\\(dashboard\\)\")"
+      "Bash(ls -la \"/c/Users/ang3l/Downloads/jsdog-main/src/app/\\(dashboard\\)\")",
+      "Bash(wc -l \"c:\\\\Users\\\\ang3l\\\\Downloads\\\\jsdog-main\\\\src\\\\app\\\\\\(dashboard\\)\\\\messages\\\\page.tsx\")"
     ]
   }
 }

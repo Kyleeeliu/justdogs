@@ -38,12 +38,16 @@ export default function BookingsSessionsPage() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
+  const [showUpcomingOnly, setShowUpcomingOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [expandedBookings, setExpandedBookings] = useState<Set<string>>(new Set());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [dogs, setDogs] = useState<Dog[]>([]);
   const [trainers, setTrainers] = useState<User[]>([]);
   const [showTrainerAssignment, setShowTrainerAssignment] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState<string | null>(null); // booking id being edited
+  const [notesInput, setNotesInput] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
 
   // Load bookings with related data
   const loadBookings = async () => {
@@ -126,36 +130,46 @@ export default function BookingsSessionsPage() {
     loadModalData();
   }, [showCreateModal, user]);
 
-  // Create booking
+  // Create booking(s) — one per dog, end_time computed from duration
   const handleCreateBooking = async (formData: BookingFormData) => {
-    try {
-      const selectedDog = dogs.find(d => d.id === formData.dog_id);
-      const payload = {
-        ...formData,
-        parent_id: selectedDog?.owner_id || user?.id,
+    const endTime = new Date(
+      new Date(formData.start_time).getTime() + formData.duration_minutes * 60_000
+    ).toISOString();
+
+    // Build one payload per selected dog
+    const payloads = formData.dog_ids.map(dogId => {
+      const dog = dogs.find(d => d.id === dogId);
+      return {
+        dog_id: dogId,
+        booking_type: formData.booking_type,
+        start_time: formData.start_time,
+        end_time: endTime,
+        notes: formData.notes,
+        location: formData.location,
+        trainer_id: formData.trainer_id || null,
+        parent_id: dog?.owner_id || user?.id,
+        recurring: formData.recurring,
+        recurring_pattern: formData.recurring_pattern,
+        recurring_occurrences: formData.recurring_occurrences,
       };
+    });
 
-      console.log('Creating booking with payload:', payload);
-
+    const errors: string[] = [];
+    for (const payload of payloads) {
       const res = await authenticatedFetch('/api/bookings', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-
-      if (res.ok) {
-        const result = await res.json();
-        console.log('Booking created:', result);
-        setShowCreateModal(false);
-        await loadBookings();
-      } else {
-        const errorData = await res.json().catch(() => ({ error: 'Server Error' }));
-        console.error('Failed to create booking:', errorData);
-        throw new Error(errorData.error || 'Failed to create booking');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Server error' }));
+        errors.push(errData.error || 'Failed to create booking');
       }
-    } catch (error: any) {
-      console.error('Error creating booking:', error);
-      throw error;
     }
+
+    if (errors.length > 0) throw new Error(errors.join('; '));
+
+    setShowCreateModal(false);
+    await loadBookings();
   };
 
   // Update booking status
@@ -195,6 +209,29 @@ export default function BookingsSessionsPage() {
     await handleBookingStatusUpdate(bookingId, 'confirmed', trainerId);
   };
 
+  // Save trainer notes
+  const handleSaveTrainerNotes = async (bookingId: string) => {
+    setSavingNotes(true);
+    try {
+      const res = await authenticatedFetch('/api/bookings', {
+        method: 'PUT',
+        body: JSON.stringify({ id: bookingId, trainer_notes: notesInput }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to save notes');
+      }
+      setBookings(prev => prev.map(b =>
+        b.id === bookingId ? { ...b, trainer_notes: notesInput } : b
+      ));
+      setEditingNotes(null);
+    } catch (err: any) {
+      alert('Failed to save notes: ' + err.message);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
   // Toggle booking expansion
   const toggleExpand = (bookingId: string) => {
     setExpandedBookings(prev => {
@@ -209,7 +246,11 @@ export default function BookingsSessionsPage() {
   };
 
   // Filter bookings
+  const now = new Date();
   const filteredBookings = bookings.filter(b => {
+    // Upcoming-only toggle: hide bookings whose start_time is in the past
+    if (showUpcomingOnly && new Date(b.start_time) < now) return false;
+
     // Status filter
     if (filter !== 'all' && b.status !== filter) return false;
 
@@ -370,7 +411,17 @@ export default function BookingsSessionsPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Upcoming toggle */}
+          <Button
+            size="sm"
+            variant={showUpcomingOnly ? 'default' : 'outline'}
+            onClick={() => setShowUpcomingOnly(v => !v)}
+            className={showUpcomingOnly ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+          >
+            Upcoming
+          </Button>
+          <span className="text-gray-300 hidden sm:inline">|</span>
           {(['all', 'pending', 'confirmed', 'completed', 'cancelled'] as const).map(status => (
             <Button
               key={status}
@@ -396,7 +447,9 @@ export default function BookingsSessionsPage() {
             <p className="text-gray-600 mb-4">
               {search || filter !== 'all'
                 ? 'Try adjusting your search or filters'
-                : `You don't have any bookings yet`}
+                : showUpcomingOnly
+                  ? 'No upcoming bookings. Toggle "Upcoming" off to see past bookings.'
+                  : `You don't have any bookings yet`}
             </p>
             {(user?.role === 'admin' || user?.role === 'parent') && !search && filter === 'all' && (
               <Button 
@@ -434,58 +487,62 @@ export default function BookingsSessionsPage() {
                       <CardContent className="p-0">
                         {/* Main Booking Card */}
                         <div
-                          className="p-5 cursor-pointer hover:bg-gray-50 transition-colors"
+                          className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                           onClick={() => toggleExpand(booking.id)}
                         >
-                          <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3">
+                            {/* Status icon */}
+                            <div className={`p-2 rounded-lg flex-shrink-0 ${statusConfig.bg}`}>
+                              <StatusIcon className={`h-5 w-5 ${statusConfig.color}`} />
+                            </div>
+
+                            {/* Content */}
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-3 mb-3">
-                                <div className={`p-2 rounded-lg ${statusConfig.bg}`}>
-                                  <StatusIcon className={`h-5 w-5 ${statusConfig.color}`} />
+                              {/* Title row: type + badge */}
+                              <div className="flex flex-wrap items-center gap-2 mb-2">
+                                <h3 className="font-semibold text-gray-900 capitalize">
+                                  {booking.booking_type.replace(/_/g, ' ')}
+                                </h3>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${statusConfig.badge}`}>
+                                  {booking.status}
+                                </span>
+                              </div>
+
+                              {/* Metadata: stacks on mobile, inline on sm+ */}
+                              <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1 text-sm text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <ClockIcon className="h-4 w-4 flex-shrink-0" />
+                                  <span>{formatTime(booking.start_time)} – {formatTime(booking.end_time)}</span>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <h3 className="font-semibold text-gray-900 capitalize">
-                                      {booking.booking_type.replace(/_/g, ' ')}
-                                    </h3>
-                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusConfig.badge}`}>
-                                      {booking.status}
-                                    </span>
+                                {booking.dog && (
+                                  <div className="flex items-center gap-1">
+                                    <UserIcon className="h-4 w-4 flex-shrink-0" />
+                                    <span className="truncate">{booking.dog.name}</span>
                                   </div>
-                                  <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                                    <div className="flex items-center gap-1">
-                                      <ClockIcon className="h-4 w-4" />
-                                      <span>{formatTime(booking.start_time)} - {formatTime(booking.end_time)}</span>
-                                    </div>
-                                    {booking.dog && (
-                                      <div className="flex items-center gap-1">
-                                        <UserIcon className="h-4 w-4" />
-                                        <span>{booking.dog.name}</span>
-                                      </div>
-                                    )}
-                                    {booking.parent && (user?.role === 'admin' || user?.role === 'trainer') && (
-                                      <div className="flex items-center gap-1">
-                                        <UserGroupIcon className="h-4 w-4" />
-                                        <span>{booking.parent.full_name}</span>
-                                      </div>
-                                    )}
-                                    {booking.trainer && user?.role !== 'trainer' && (
-                                      <div className="flex items-center gap-1">
-                                        <UserGroupIcon className="h-4 w-4" />
-                                        <span>{booking.trainer.full_name}</span>
-                                      </div>
-                                    )}
-                                    {booking.location && (
-                                      <div className="flex items-center gap-1">
-                                        <MapPinIcon className="h-4 w-4" />
-                                        <span className="truncate max-w-[200px]">{booking.location}</span>
-                                      </div>
-                                    )}
+                                )}
+                                {booking.parent && (user?.role === 'admin' || user?.role === 'trainer') && (
+                                  <div className="flex items-center gap-1">
+                                    <UserGroupIcon className="h-4 w-4 flex-shrink-0" />
+                                    <span className="truncate">{booking.parent.full_name}</span>
                                   </div>
-                                </div>
+                                )}
+                                {booking.trainer && user?.role !== 'trainer' && (
+                                  <div className="flex items-center gap-1">
+                                    <UserGroupIcon className="h-4 w-4 flex-shrink-0" />
+                                    <span className="truncate">{booking.trainer.full_name}</span>
+                                  </div>
+                                )}
+                                {booking.location && (
+                                  <div className="flex items-center gap-1">
+                                    <MapPinIcon className="h-4 w-4 flex-shrink-0" />
+                                    <span className="truncate">{booking.location}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
+
+                            {/* Right actions + chevron */}
+                            <div className="flex items-center gap-1 flex-shrink-0">
                               {canApprove && (
                                 <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                                   <Button
@@ -588,6 +645,54 @@ export default function BookingsSessionsPage() {
                                 </p>
                               </div>
                             )}
+                            {/* Trainer feedback */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-medium text-gray-700">Trainer Feedback</h4>
+                                {user?.role === 'trainer' && editingNotes !== booking.id && (
+                                  <button
+                                    onClick={() => { setEditingNotes(booking.id); setNotesInput(booking.trainer_notes || ''); }}
+                                    className="text-xs text-[rgb(0_32_96)] hover:underline"
+                                  >
+                                    {booking.trainer_notes ? 'Edit' : '+ Add feedback'}
+                                  </button>
+                                )}
+                              </div>
+
+                              {user?.role === 'trainer' && editingNotes === booking.id ? (
+                                <div className="space-y-2">
+                                  <textarea
+                                    value={notesInput}
+                                    onChange={e => setNotesInput(e.target.value)}
+                                    rows={4}
+                                    placeholder="Write your session notes here…"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-gray-900"
+                                  />
+                                  <div className="flex gap-2 justify-end">
+                                    <Button size="sm" variant="outline" onClick={() => setEditingNotes(null)} disabled={savingNotes}>
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+                                      onClick={() => handleSaveTrainerNotes(booking.id)}
+                                      disabled={savingNotes}
+                                    >
+                                      {savingNotes ? 'Saving…' : 'Save'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : booking.trainer_notes ? (
+                                <p className="text-sm text-gray-600 bg-white p-3 rounded border border-gray-200 whitespace-pre-wrap">
+                                  {booking.trainer_notes}
+                                </p>
+                              ) : (
+                                <p className="text-sm text-gray-400 italic">
+                                  {user?.role === 'trainer' ? 'No feedback added yet.' : 'No trainer feedback yet.'}
+                                </p>
+                              )}
+                            </div>
+
                             <div className="flex justify-between items-center text-xs text-gray-500 pt-2 border-t border-gray-200">
                               <span>Created: {new Date(booking.created_at).toLocaleDateString()}</span>
                               <span>Last updated: {new Date(booking.updated_at).toLocaleDateString()}</span>

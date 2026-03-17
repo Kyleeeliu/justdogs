@@ -56,6 +56,7 @@ export interface Booking {
   special_instructions?: string;
   notes?: string;
   location?: string;
+  trainer_notes?: string;
   created_at: string;
   updated_at: string;
 }

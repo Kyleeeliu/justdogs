@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
@@ -37,6 +37,8 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const router = useRouter();
   const { user, loading, initialized, logout, isAuthenticated } = useAuth();
 
@@ -56,7 +58,9 @@ export default function DashboardLayout({
   useEffect(() => {
     const loadUnreadCount = async () => {
       if (!user) return;
-      
+      // Don't poll while the user is on the messages page — they're reading messages
+      if (pathnameRef.current === '/messages') return;
+
       try {
         const unreadCount = await getUnreadMessageCount(user.id);
         setUnreadMessageCount(unreadCount);
@@ -67,10 +71,10 @@ export default function DashboardLayout({
     };
 
     loadUnreadCount();
-    
+
     // Set up interval to refresh unread count every 30 seconds
     const interval = setInterval(loadUnreadCount, 30000);
-    
+
     return () => clearInterval(interval);
   }, [user]);
 
