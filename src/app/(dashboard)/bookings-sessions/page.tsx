@@ -658,12 +658,12 @@ export default function BookingsSessionsPage() {
                             )}
                             {/* Trainer feedback */}
                             <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-medium text-gray-700">Trainer Feedback</h4>
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-base font-semibold text-gray-900">Trainer Feedback</h4>
                                 {(user?.role === 'trainer' || user?.role === 'admin') && editingNotes !== booking.id && (
                                   <button
                                     onClick={() => { setEditingNotes(booking.id); setNotesInput(booking.trainer_notes || ''); }}
-                                    className="text-xs text-[rgb(0_32_96)] hover:underline"
+                                    className="text-sm font-medium text-[rgb(0_32_96)] hover:underline"
                                   >
                                     {booking.trainer_notes ? 'Edit' : '+ Add feedback'}
                                   </button>
@@ -677,7 +677,7 @@ export default function BookingsSessionsPage() {
                                     onChange={e => setNotesInput(e.target.value)}
                                     rows={4}
                                     placeholder="Write your session notes here…"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-gray-900"
+                                    className="w-full px-3 py-2 text-base border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-gray-900"
                                   />
                                   <div className="flex gap-2 justify-end">
                                     <Button size="sm" variant="outline" onClick={() => setEditingNotes(null)} disabled={savingNotes}>
@@ -694,7 +694,7 @@ export default function BookingsSessionsPage() {
                                   </div>
                                 </div>
                               ) : booking.trainer_notes ? (
-                                <p className="text-sm text-gray-600 bg-white p-3 rounded border border-gray-200 whitespace-pre-wrap">
+                                <p className="text-base font-medium text-gray-900 bg-white p-4 rounded-lg border-2 border-gray-300 whitespace-pre-wrap break-words leading-relaxed overflow-wrap-anywhere">
                                   {booking.trainer_notes}
                                 </p>
                               ) : (
