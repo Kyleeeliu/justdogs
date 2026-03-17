@@ -17,7 +17,8 @@ import {
   Bars3Icon,
   XMarkIcon,
   ArrowRightOnRectangleIcon,
-  NewspaperIcon
+  NewspaperIcon,
+  CogIcon,
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -27,6 +28,10 @@ const navigation = [
   { name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon, mobileLabel: 'Messages' },
   { name: 'News & Events', href: '/news', icon: NewspaperIcon, mobileLabel: 'News' },
   { name: 'Profile', href: '/profile', icon: UserIcon, mobileLabel: 'Profile' },
+];
+
+const adminNavigation = [
+  { name: 'Content Management', href: '/admin/content-management', icon: CogIcon, mobileLabel: 'Admin' },
 ];
 
 export default function DashboardLayout({
@@ -189,6 +194,29 @@ export default function DashboardLayout({
                 </Link>
               );
             })}
+            {user?.role === 'admin' && (
+              <>
+                <p className="px-3 pt-4 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Admin</p>
+                {adminNavigation.map((item) => {
+                  const isActive = pathname === item.href || pathname.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`group flex items-center px-3 py-3 text-base font-medium rounded-lg transition-colors ${
+                        isActive
+                          ? 'bg-[rgb(0_32_96)] text-white'
+                          : 'text-gray-600 hover:bg-[rgb(0_32_96)] hover:bg-opacity-10 hover:text-[rgb(0_32_96)]'
+                      }`}
+                    >
+                      <item.icon className="mr-3 h-6 w-6" />
+                      <span className="flex-1">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </>
+            )}
             <button
               type="button"
               onClick={() => { setSidebarOpen(false); handleSignOut(); }}
@@ -261,6 +289,28 @@ export default function DashboardLayout({
                 </Link>
               );
             })}
+            {user?.role === 'admin' && (
+              <>
+                <p className="px-2 pt-4 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Admin</p>
+                {adminNavigation.map((item) => {
+                  const isActive = pathname === item.href || pathname.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
+                        isActive
+                          ? 'bg-[rgb(0_32_96)] text-white'
+                          : 'text-gray-600 hover:bg-[rgb(0_32_96)] hover:bg-opacity-10 hover:text-white'
+                      }`}
+                    >
+                      <item.icon className="mr-3 h-5 w-5" />
+                      <span className="flex-1">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </>
+            )}
           </nav>
           <div className="border-t border-gray-200 p-4">
             <div className="flex items-center mb-4">

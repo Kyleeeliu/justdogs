@@ -5,10 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { XMarkIcon, CalendarIcon, ClockIcon, MapPinIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { authenticatedGet } from '@/lib/api/apiClient';
 
 export interface BookingFormData {
-  dog_ids: string[];           // one or more dogs
-  duration_minutes: number;    // replaces end_time
+  dog_ids: string[];
+  duration_minutes: number;
   booking_type: string;
   start_time: string;
   notes?: string;
@@ -20,6 +21,14 @@ export interface BookingFormData {
   recurring_occurrences?: number;
 }
 
+export interface DbBookingType {
+  id: string;
+  name: string;
+  category: string;
+  duration_minutes: number;
+  price_per_dog: number;
+}
+
 interface CreateBookingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -27,21 +36,22 @@ interface CreateBookingModalProps {
   dogs: Array<{ id: string; name: string }>;
   trainers: Array<{ id: string; name: string; full_name?: string }>;
   userRole?: string;
+  initialValues?: Partial<BookingFormData & { dog_id?: string }>;
 }
 
-const BOOKING_TYPES = [
-  { value: 'behavior_and_home', label: 'Behavior and Home' },
-  { value: 'academy', label: 'Academy' },
-  { value: 'farm', label: 'Farm' },
+const CATEGORIES = [
+  { value: 'behavior_and_home',          label: 'Behaviour & Home' },
+  { value: 'academy',                    label: 'Academy' },
+  { value: 'farm',                       label: 'Farm' },
   { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
 ];
 
 const DURATION_OPTIONS = [
-  { value: 30,  label: '30 minutes' },
-  { value: 45,  label: '45 minutes' },
+  { value: 40,  label: '40 minutes' },
   { value: 60,  label: '1 hour' },
-  { value: 90,  label: '1.5 hours' },
+  { value: 90,  label: '90 minutes' },
   { value: 120, label: '2 hours' },
+  { value: 150, label: '2.5 hours' },
   { value: 180, label: '3 hours' },
   { value: 240, label: '4 hours' },
   { value: 0,   label: 'Custom…' },
@@ -52,13 +62,11 @@ function toLocalDatetimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const DEFAULT_DURATION = 60;
-
-export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, userRole }: CreateBookingModalProps) {
+export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, userRole, initialValues }: CreateBookingModalProps) {
   const [dog_ids, setDogIds] = useState<string[]>([]);
   const [booking_type, setBookingType] = useState('');
   const [start_time, setStartTime] = useState('');
-  const [durationPreset, setDurationPreset] = useState(DEFAULT_DURATION);
+  const [durationPreset, setDurationPreset] = useState(40);
   const [customMinutes, setCustomMinutes] = useState(60);
   const [notes, setNotes] = useState('');
   const [location, setLocation] = useState('');
@@ -69,32 +77,74 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const [dbBookingTypes, setDbBookingTypes] = useState<DbBookingType[]>([]);
+  const [loadingTypes, setLoadingTypes] = useState(false);
+
   const durationMinutes = durationPreset === 0 ? customMinutes : durationPreset;
 
+  // Load booking types from DB when modal opens
   useEffect(() => {
-    if (isOpen) {
-      const now = new Date();
-      now.setSeconds(0, 0);
+    if (!isOpen) return;
+    setLoadingTypes(true);
+    authenticatedGet('/api/booking-types')
+      .then(res => res.json())
+      .then(data => setDbBookingTypes(Array.isArray(data) ? data : []))
+      .catch(() => setDbBookingTypes([]))
+      .finally(() => setLoadingTypes(false));
+  }, [isOpen]);
+
+  // Reset / pre-fill form when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    const now = new Date();
+    now.setSeconds(0, 0);
+
+    if (initialValues) {
+      // Pre-fill for duplicate
+      const initDogIds = initialValues.dog_ids?.length
+        ? initialValues.dog_ids
+        : initialValues.dog_id
+          ? [initialValues.dog_id]
+          : [];
+      setDogIds(initDogIds);
+      setBookingType(initialValues.booking_type || '');
+      setStartTime(toLocalDatetimeLocal(now)); // always fresh start time
+      const dur = initialValues.duration_minutes ?? 40;
+      const preset = DURATION_OPTIONS.find(o => o.value === dur && o.value !== 0)?.value ?? 0;
+      setDurationPreset(preset);
+      setCustomMinutes(preset === 0 ? dur : 60);
+      setNotes(initialValues.notes || '');
+      setLocation(initialValues.location || '');
+      setTrainerId(initialValues.trainer_id || '');
+    } else {
       setDogIds([]);
       setBookingType('');
       setStartTime(toLocalDatetimeLocal(now));
-      setDurationPreset(DEFAULT_DURATION);
+      setDurationPreset(40);
       setCustomMinutes(60);
       setNotes('');
       setLocation('');
       setTrainerId('');
-      setRecurring(false);
-      setRecurringPattern('weekly');
-      setRecurringOccurrences(4);
-      setErrors({});
     }
-  }, [isOpen]);
+    setRecurring(false);
+    setRecurringPattern('weekly');
+    setRecurringOccurrences(4);
+    setErrors({});
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleDog = (id: string) => {
-    setDogIds(prev =>
-      prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
-    );
+    setDogIds(prev => prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]);
     if (errors.dog_ids) setErrors(prev => ({ ...prev, dog_ids: '' }));
+  };
+
+  const handleBookingTypeSelect = (typeName: string, dur?: number) => {
+    setBookingType(typeName);
+    setErrors(p => ({ ...p, booking_type: '' }));
+    if (dur) {
+      const preset = DURATION_OPTIONS.find(o => o.value === dur && o.value !== 0)?.value ?? 0;
+      setDurationPreset(preset);
+      if (preset === 0) setCustomMinutes(dur);
+    }
   };
 
   const validate = (): boolean => {
@@ -134,8 +184,13 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
 
   if (!isOpen) return null;
 
-  const needsLocation =
-    booking_type === 'behavior_and_home' || booking_type === 'service_and_emotional_support';
+  // Group DB types by category
+  const typesByCategory = CATEGORIES.map(cat => ({
+    ...cat,
+    types: dbBookingTypes.filter(t => t.category === cat.value),
+  })).filter(cat => cat.types.length > 0);
+
+  const needsLocation = booking_type === 'behavior_and_home' || booking_type === 'service_and_emotional_support';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -145,9 +200,11 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
             <div>
               <CardTitle className="flex items-center gap-2">
                 <CalendarIcon className="h-5 w-5" />
-                Create New Booking
+                {initialValues ? 'Duplicate Booking' : 'Create New Booking'}
               </CardTitle>
-              <CardDescription>Schedule a training session</CardDescription>
+              <CardDescription>
+                {initialValues ? 'Review the details below — update the start time to confirm.' : 'Schedule a training session'}
+              </CardDescription>
             </div>
             <Button variant="ghost" size="sm" onClick={onClose} disabled={submitting}>
               <XMarkIcon className="h-4 w-4" />
@@ -205,17 +262,51 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
               <label className="block text-sm font-medium text-gray-700">
                 Booking Type <span className="text-red-500">*</span>
               </label>
-              <select
-                value={booking_type}
-                onChange={e => { setBookingType(e.target.value); setErrors(p => ({ ...p, booking_type: '' })); }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
-                disabled={submitting}
-              >
-                <option value="">Choose a service…</option>
-                {BOOKING_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
+              {loadingTypes ? (
+                <p className="text-sm text-gray-400 italic">Loading service types…</p>
+              ) : dbBookingTypes.length > 0 ? (
+                <div className="space-y-3">
+                  {typesByCategory.map(cat => (
+                    <div key={cat.value}>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{cat.label}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {cat.types.map(t => {
+                          const selected = booking_type === t.name;
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => handleBookingTypeSelect(t.name, t.duration_minutes)}
+                              disabled={submitting}
+                              className={`flex flex-col px-4 py-3 rounded-lg border-2 text-left transition-colors ${
+                                selected
+                                  ? 'border-[rgb(0_32_96)] bg-blue-50 text-[rgb(0_32_96)]'
+                                  : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                              }`}
+                            >
+                              <span className="font-medium text-sm">{t.name}</span>
+                              <span className="text-xs opacity-70 mt-0.5">
+                                {t.duration_minutes} min · R{t.price_per_dog}/dog
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Fallback if no DB types exist yet */
+                <select
+                  value={booking_type}
+                  onChange={e => { setBookingType(e.target.value); setErrors(p => ({ ...p, booking_type: '' })); }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
+                  disabled={submitting}
+                >
+                  <option value="">Choose a service…</option>
+                  {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              )}
               {errors.booking_type && <p className="text-sm text-red-600">{errors.booking_type}</p>}
             </div>
 

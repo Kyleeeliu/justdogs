@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { getCurrentUser } from '@/lib/auth/auth';
+import { authenticatedGet, authenticatedFetch } from '@/lib/api/apiClient';
 import { User, ApprovalStatus } from '@/types';
 import {
   getAllNewsItems,
@@ -77,13 +78,16 @@ interface NewsItem {
 export default function ContentManagementPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'news' | 'events' | 'services' | 'team' | 'gallery' | 'trainers'>('news');
+  const [activeTab, setActiveTab] = useState<'news' | 'events' | 'services' | 'team' | 'gallery' | 'trainers' | 'booking-types'>('news');
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
   const [pendingTrainers, setPendingTrainers] = useState<User[]>([]);
+  const [bookingTypes, setBookingTypes] = useState<Array<{ id: string; name: string; category: string; duration_minutes: number; price_per_dog: number }>>([]);
+  const [btForm, setBtForm] = useState<{ id?: string; name: string; category: string; duration_minutes: number | ''; price_per_dog: number | '' } | null>(null);
+  const [btSaving, setBtSaving] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
   const router = useRouter();
@@ -173,6 +177,7 @@ export default function ContentManagementPage() {
 
         // Load pending trainers from Supabase
         await loadPendingTrainers();
+        await loadBookingTypes();
       } catch (error) {
         console.error('Error loading content data:', error);
       }
@@ -193,6 +198,174 @@ export default function ContentManagementPage() {
       console.error('Error loading pending trainers:', error);
     }
   };
+
+  const loadBookingTypes = async () => {
+    try {
+      const res = await authenticatedGet('/api/booking-types');
+      if (res.ok) setBookingTypes(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  const handleBtSave = async () => {
+    if (!btForm || !btForm.name || !btForm.category || !btForm.duration_minutes) return;
+    setBtSaving(true);
+    try {
+      const method = btForm.id ? 'PUT' : 'POST';
+      const res = await authenticatedFetch('/api/booking-types', {
+        method,
+        body: JSON.stringify(btForm),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to save booking type');
+        return;
+      }
+      await loadBookingTypes();
+      setBtForm(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save booking type');
+    } finally {
+      setBtSaving(false);
+    }
+  };
+
+  const handleBtDelete = async (id: string) => {
+    if (!confirm('Remove this booking type?')) return;
+    await authenticatedFetch(`/api/booking-types?id=${id}`, { method: 'DELETE' });
+    await loadBookingTypes();
+  };
+
+  const BT_CATEGORIES = [
+    { value: 'behavior_and_home', label: 'Behaviour & Home' },
+    { value: 'academy', label: 'Academy' },
+    { value: 'farm', label: 'Farm' },
+    { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
+  ];
+
+  const renderBookingTypes = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Booking Types</h2>
+        <Button
+          onClick={() => setBtForm({ name: '', category: 'academy', duration_minutes: 60, price_per_dog: 0 })}
+          className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+        >
+          <PlusIcon className="h-4 w-4 mr-2" />
+          Add Type
+        </Button>
+      </div>
+
+      {btForm && (
+        <Card className="border-2 border-[rgb(0_32_96)]">
+          <CardContent className="p-5 space-y-4">
+            <h3 className="font-semibold text-gray-900">{btForm.id ? 'Edit Booking Type' : 'New Booking Type'}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Booking Type Name</label>
+                <Input
+                  placeholder="e.g. Dog Jog, Swim & Gym"
+                  value={btForm.name}
+                  onChange={e => setBtForm(f => f ? { ...f, name: e.target.value } : f)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  value={btForm.category}
+                  onChange={e => setBtForm(f => f ? { ...f, category: e.target.value } : f)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
+                >
+                  {BT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 60"
+                  value={btForm.duration_minutes}
+                  onChange={e => setBtForm(f => f ? { ...f, duration_minutes: e.target.value === '' ? '' : Number(e.target.value) } : f)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Price per Dog (R)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  placeholder="e.g. 35.00"
+                  value={btForm.price_per_dog}
+                  onChange={e => setBtForm(f => f ? { ...f, price_per_dog: e.target.value === '' ? '' : Number(e.target.value) } : f)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" onClick={() => setBtForm(null)} disabled={btSaving}>Cancel</Button>
+              <Button
+                onClick={handleBtSave}
+                disabled={btSaving || !btForm.name || !btForm.duration_minutes}
+                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+              >
+                {btSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {bookingTypes.length === 0 && !btForm ? (
+        <Card>
+          <CardContent className="p-8 text-center text-gray-500">
+            No booking types yet. Add one above.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {BT_CATEGORIES.map(cat => {
+            const types = bookingTypes.filter(t => t.category === cat.value);
+            if (types.length === 0) return null;
+            return (
+              <div key={cat.value}>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{cat.label}</p>
+                <div className="grid gap-2">
+                  {types.map(t => (
+                    <Card key={t.id} className="hover:shadow-md transition-shadow">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-gray-900">{t.name}</p>
+                            <p className="text-sm text-gray-500 mt-0.5">{t.duration_minutes} min · R{t.price_per_dog.toFixed(2)} per dog</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setBtForm({ id: t.id, name: t.name, category: t.category, duration_minutes: t.duration_minutes, price_per_dog: t.price_per_dog })}
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleBtDelete(t.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 
   // Function to approve/reject trainer
   const handleTrainerApproval = async (trainerId: string, action: 'approve' | 'reject') => {
@@ -961,6 +1134,7 @@ export default function ContentManagementPage() {
           {[
             { id: 'news', name: 'News', icon: NewspaperIcon },
             { id: 'events', name: 'Events', icon: CalendarIcon },
+            { id: 'booking-types', name: 'Booking Types', icon: CogIcon },
             { id: 'services', name: 'Services', icon: CogIcon },
             { id: 'team', name: 'Team', icon: UsersIcon },
             { id: 'trainers', name: 'Trainer Approvals', icon: UserPlusIcon },
@@ -984,6 +1158,7 @@ export default function ContentManagementPage() {
       {/* Content */}
       {activeTab === 'news' && renderNewsManagement()}
       {activeTab === 'events' && renderEventsManagement()}
+      {activeTab === 'booking-types' && renderBookingTypes()}
       {activeTab === 'services' && renderServicesManagement()}
       {activeTab === 'team' && renderTeamManagement()}
       {activeTab === 'trainers' && renderTrainerApprovals()}

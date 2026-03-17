@@ -36,29 +36,12 @@ export const createUser = async (
 
   const { data, error } = await supabase
     .from(USERS_TABLE)
-    .insert([insertData])
+    .upsert([insertData], { onConflict: 'id', ignoreDuplicates: false })
     .select()
     .single();
 
   if (error) {
-    // Log the error in multiple ways to ensure we capture all information
-    console.error('Error creating user - Raw error:', error);
-    console.error('Error creating user - Stringified:', JSON.stringify(error, null, 2));
-    console.error('Error creating user - Properties:', {
-      message: error?.message || 'No message',
-      code: error?.code || 'No code',
-      details: error?.details || 'No details',
-      hint: error?.hint || 'No hint',
-      statusCode: (error as any)?.statusCode || 'No status code',
-      name: error?.name || 'No name',
-    });
-    
-    // Also log all enumerable properties
-    console.error('Error creating user - All properties:', Object.getOwnPropertyNames(error).reduce((acc, key) => {
-      acc[key] = (error as any)[key];
-      return acc;
-    }, {} as any));
-    
+    console.error('Error creating user:', error.message);
     throw error;
   }
 
