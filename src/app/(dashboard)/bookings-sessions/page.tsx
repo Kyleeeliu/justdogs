@@ -245,14 +245,24 @@ export default function BookingsSessionsPage() {
     });
   };
 
+  // Past = session has ended (use end_time or start_time)
+  const isPast = (b: BookingWithDetails) => {
+    const end = b.end_time ? new Date(b.end_time) : new Date(b.start_time);
+    return end < new Date();
+  };
+  const isCompletedOrPast = (b: BookingWithDetails) =>
+    b.status === 'completed' || (isPast(b) && b.status !== 'cancelled');
+
   // Filter bookings
   const now = new Date();
   const filteredBookings = bookings.filter(b => {
-    // Upcoming-only toggle: hide bookings whose start_time is in the past
-    if (showUpcomingOnly && new Date(b.start_time) < now) return false;
+    // Upcoming-only toggle: hide past bookings (skip when on Completed tab so past sessions show)
+    if (showUpcomingOnly && filter !== 'completed' && isPast(b)) return false;
 
-    // Status filter
-    if (filter !== 'all' && b.status !== filter) return false;
+    // Status filter: "completed" tab = all past sessions + explicitly completed
+    if (filter === 'completed') {
+      if (!isCompletedOrPast(b)) return false;
+    } else if (filter !== 'all' && b.status !== filter) return false;
 
     // Search filter
     if (search) {
@@ -282,18 +292,19 @@ export default function BookingsSessionsPage() {
     return acc;
   }, {} as Record<string, BookingWithDetails[]>);
 
-  // Sort dates
+  // Sort dates (completed tab: most recent first; others: soonest first)
   const sortedDates = Object.keys(groupedBookings).sort((a, b) => {
-    return new Date(a).getTime() - new Date(b).getTime();
+    const diff = new Date(a).getTime() - new Date(b).getTime();
+    return filter === 'completed' ? -diff : diff;
   });
 
-  // Statistics
+  // Statistics (completed = explicitly completed or past and not cancelled)
   const stats = {
     total: bookings.length,
     pending: bookings.filter(b => b.status === 'pending').length,
     confirmed: bookings.filter(b => b.status === 'confirmed').length,
     upcoming: bookings.filter(b => new Date(b.start_time) > new Date() && b.status !== 'cancelled').length,
-    completed: bookings.filter(b => b.status === 'completed').length,
+    completed: bookings.filter(b => isCompletedOrPast(b)).length,
   };
 
   // Status helpers
@@ -649,7 +660,7 @@ export default function BookingsSessionsPage() {
                             <div>
                               <div className="flex items-center justify-between mb-2">
                                 <h4 className="text-sm font-medium text-gray-700">Trainer Feedback</h4>
-                                {user?.role === 'trainer' && editingNotes !== booking.id && (
+                                {(user?.role === 'trainer' || user?.role === 'admin') && editingNotes !== booking.id && (
                                   <button
                                     onClick={() => { setEditingNotes(booking.id); setNotesInput(booking.trainer_notes || ''); }}
                                     className="text-xs text-[rgb(0_32_96)] hover:underline"
@@ -659,7 +670,7 @@ export default function BookingsSessionsPage() {
                                 )}
                               </div>
 
-                              {user?.role === 'trainer' && editingNotes === booking.id ? (
+                              {(user?.role === 'trainer' || user?.role === 'admin') && editingNotes === booking.id ? (
                                 <div className="space-y-2">
                                   <textarea
                                     value={notesInput}
@@ -688,7 +699,7 @@ export default function BookingsSessionsPage() {
                                 </p>
                               ) : (
                                 <p className="text-sm text-gray-400 italic">
-                                  {user?.role === 'trainer' ? 'No feedback added yet.' : 'No trainer feedback yet.'}
+                                  {(user?.role === 'trainer' || user?.role === 'admin') ? 'No feedback added yet.' : 'No trainer feedback yet.'}
                                 </p>
                               )}
                             </div>
