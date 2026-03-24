@@ -375,7 +375,7 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
                 {errors.duration && <p className="text-sm text-red-600">{errors.duration}</p>}
                 {durationMinutes > 0 && start_time && (
                   <p className="text-xs text-gray-500">
-                    Ends at {new Date(new Date(start_time).getTime() + durationMinutes * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    Ends at {new Date(new Date(start_time).getTime() + durationMinutes * 60000).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })}
                   </p>
                 )}
               </div>

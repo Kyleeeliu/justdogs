@@ -19,6 +19,7 @@ export function formatDate(date: string | Date): string {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: 'Africa/Johannesburg',
   }).format(new Date(date));
 }
 
@@ -30,6 +31,7 @@ export function formatDateTime(date: string | Date): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Africa/Johannesburg',
   }).format(new Date(date));
 }
 
@@ -38,6 +40,7 @@ export function formatTime(date: string | Date): string {
   return new Intl.DateTimeFormat('en-ZA', {
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Africa/Johannesburg',
   }).format(new Date(date));
 }
 

@@ -18,6 +18,13 @@ async function getAuthenticatedUser(request: NextRequest) {
   return { ...authUser, role: userRow?.role || 'parent' };
 }
 
+const DEFAULT_BOOKING_TYPES = [
+  { name: 'Behaviour & Home', category: 'behavior_and_home', duration_minutes: 60, price_per_dog: 0, is_active: true },
+  { name: 'Academy', category: 'academy', duration_minutes: 60, price_per_dog: 0, is_active: true },
+  { name: 'Farm', category: 'farm', duration_minutes: 60, price_per_dog: 0, is_active: true },
+  { name: 'Service & Emotional Support', category: 'service_and_emotional_support', duration_minutes: 60, price_per_dog: 0, is_active: true },
+];
+
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
   if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -25,7 +32,7 @@ export async function GET(request: NextRequest) {
   const supabase = getServiceRoleClient();
   if (!supabase) return NextResponse.json({ error: 'Server config error' }, { status: 500 });
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('booking_types')
     .select('*')
     .eq('is_active', true)
@@ -33,6 +40,21 @@ export async function GET(request: NextRequest) {
     .order('name');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Seed defaults if the table is empty
+  if (!data || data.length === 0) {
+    const { error: seedError } = await supabase.from('booking_types').insert(DEFAULT_BOOKING_TYPES);
+    if (!seedError) {
+      const result = await supabase
+        .from('booking_types')
+        .select('*')
+        .eq('is_active', true)
+        .order('category')
+        .order('name');
+      data = result.data;
+    }
+  }
+
   return NextResponse.json(data ?? []);
 }
 

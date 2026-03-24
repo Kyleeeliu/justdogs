@@ -139,14 +139,14 @@ export function BookingSlotSelector({ trainers, dogs, currentUser, onBookingComp
   const formatSlotTime = (slot: AvailableSlot) => {
     const start = new Date(slot.start_time);
     const end = new Date(slot.end_time);
-    return `${start.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      hour12: true 
-    })} - ${end.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      hour12: true 
+    return `${start.toLocaleTimeString('en-ZA', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Africa/Johannesburg'
+    })} - ${end.toLocaleTimeString('en-ZA', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Africa/Johannesburg'
     })}`;
   };
 

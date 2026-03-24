@@ -50,6 +50,7 @@ export default function NewsPage() {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+      timeZone: 'Africa/Johannesburg',
     });
 
   const toggleNewsletter = (id: string) => {

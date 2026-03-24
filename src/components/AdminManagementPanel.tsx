@@ -25,12 +25,20 @@ import { getAllDogs } from '@/lib/supabase/dogs';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BOOKING_TYPES = [
-  { value: 'behavior_and_home', label: 'Behavior and Home' },
+const BOOKING_CATEGORIES = [
+  { value: 'behavior_and_home', label: 'Behaviour & Home' },
   { value: 'academy', label: 'Academy' },
   { value: 'farm', label: 'Farm' },
   { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
 ];
+
+interface DbBookingType {
+  id: string;
+  name: string;
+  category: string;
+  duration_minutes: number;
+  price_per_dog: number;
+}
 
 const BOOKING_STATUSES = [
   { value: 'pending', label: 'Pending', color: 'bg-amber-100 text-amber-700' },
@@ -121,11 +129,12 @@ function formatDate(iso: string): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    timeZone: 'Africa/Johannesburg',
   });
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' });
 }
 
 function statusBadge(status: string) {
@@ -148,6 +157,7 @@ export function AdminManagementPanel() {
   const [showCreateBooking, setShowCreateBooking] = useState(false);
   const [allDogs, setAllDogs] = useState<Array<{ id: string; name: string }>>([]);
   const [bookingFormError, setBookingFormError] = useState<string | null>(null);
+  const [dbBookingTypes, setDbBookingTypes] = useState<DbBookingType[]>([]);
   const emptyCreate: BookingCreateState = {
     dog_id: '',
     trainer_id: '',
@@ -251,6 +261,17 @@ export function AdminManagementPanel() {
         setAllDogs(dogs.map((d) => ({ id: d.id, name: d.name })));
       } catch {
         setAllDogs([]);
+      }
+
+      // ── Booking Types ──
+      try {
+        const btRes = await authenticatedGet('/api/booking-types');
+        if (btRes.ok) {
+          const btData = await btRes.json();
+          setDbBookingTypes(Array.isArray(btData) ? btData : []);
+        }
+      } catch {
+        setDbBookingTypes([]);
       }
 
       // ── Newsletters ──
@@ -794,7 +815,7 @@ export function AdminManagementPanel() {
                         </span>
                       </div>
                       <p className="text-sm text-gray-600">
-                        {BOOKING_TYPES.find((t) => t.value === booking.booking_type)?.label ||
+                        {BOOKING_CATEGORIES.find((t) => t.value === booking.booking_type)?.label ||
                           booking.booking_type.replace(/_/g, ' ')}{' '}
                         · {formatDate(booking.start_time)} at {formatTime(booking.start_time)}
                       </p>
@@ -1223,16 +1244,52 @@ export function AdminManagementPanel() {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Service Type <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={editingBooking.booking_type}
-                  onChange={(e) => setEditingBooking({ ...editingBooking, booking_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
-                >
-                  <option value="">Choose a service...</option>
-                  {BOOKING_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
+                {dbBookingTypes.length > 0 ? (
+                  <div className="space-y-3">
+                    {BOOKING_CATEGORIES.map(cat => {
+                      const types = dbBookingTypes.filter(t => t.category === cat.value);
+                      if (types.length === 0) return null;
+                      return (
+                        <div key={cat.value}>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{cat.label}</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {types.map(t => {
+                              const selected = editingBooking.booking_type === t.name;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => setEditingBooking({ ...editingBooking, booking_type: t.name })}
+                                  className={`flex flex-col px-4 py-3 rounded-lg border-2 text-left transition-colors ${
+                                    selected
+                                      ? 'border-[rgb(0_32_96)] bg-blue-50 text-[rgb(0_32_96)]'
+                                      : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                                  }`}
+                                >
+                                  <span className="font-medium text-sm">{t.name}</span>
+                                  <span className="text-xs opacity-70 mt-0.5">
+                                    {t.duration_minutes} min · R{t.price_per_dog}/dog
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <select
+                    value={editingBooking.booking_type}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, booking_type: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                  >
+                    <option value="">Choose a service...</option>
+                    {BOOKING_CATEGORIES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1358,16 +1415,52 @@ export function AdminManagementPanel() {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Service Type <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={createForm.booking_type}
-                  onChange={(e) => setCreateForm({ ...createForm, booking_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
-                >
-                  <option value="">Choose a service...</option>
-                  {BOOKING_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
+                {dbBookingTypes.length > 0 ? (
+                  <div className="space-y-3">
+                    {BOOKING_CATEGORIES.map(cat => {
+                      const types = dbBookingTypes.filter(t => t.category === cat.value);
+                      if (types.length === 0) return null;
+                      return (
+                        <div key={cat.value}>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{cat.label}</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {types.map(t => {
+                              const selected = createForm.booking_type === t.name;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => setCreateForm({ ...createForm, booking_type: t.name })}
+                                  className={`flex flex-col px-4 py-3 rounded-lg border-2 text-left transition-colors ${
+                                    selected
+                                      ? 'border-[rgb(0_32_96)] bg-blue-50 text-[rgb(0_32_96)]'
+                                      : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                                  }`}
+                                >
+                                  <span className="font-medium text-sm">{t.name}</span>
+                                  <span className="text-xs opacity-70 mt-0.5">
+                                    {t.duration_minutes} min · R{t.price_per_dog}/dog
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <select
+                    value={createForm.booking_type}
+                    onChange={(e) => setCreateForm({ ...createForm, booking_type: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                  >
+                    <option value="">Choose a service...</option>
+                    {BOOKING_CATEGORIES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
