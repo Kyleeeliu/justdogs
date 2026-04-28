@@ -13,13 +13,14 @@ import {
 } from '@heroicons/react/24/outline';
 import { User, DashboardStats, TrainerStats, ParentStats, Message, Dog } from '@/types';
 import { useRouter } from 'next/navigation';
-import { getMessagesByUser, getRecentMessagePhotos } from '@/lib/supabase/messages';
+import { getMessagesByUser } from '@/lib/supabase/messages';
 import { useAuth } from '@/hooks/useAuth';
 import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
 import { getDogsByOwner, getAllDogs } from '@/lib/supabase/dogs';
 import { getUsersByRole } from '@/lib/supabase/users';
 import { authenticatedGet, authenticatedPost } from '@/lib/api/apiClient';
 import { AdminManagementPanel } from '@/components/AdminManagementPanel';
+import { VerificationHoldingScreen } from '@/components/VerificationHoldingScreen';
 
 // Component to display parent's dogs
 const ParentDogsCard = ({ userId }: { userId: string }) => {
@@ -135,86 +136,61 @@ const TrainerScheduleCard = ({ trainerStats }: { trainerStats: TrainerStats }) =
   );
 };
 
-// Recent photos from messages
-type PhotoViewAs = 'parent' | 'trainer';
-const RecentMessagePhotosCard = ({ userId, userRole }: { userId: string; userRole: string }) => {
-  const [photos, setPhotos] = useState<Array<{ 
-    file_url: string; 
-    file_name: string; 
-    created_at: string; 
-    sender_name?: string 
+// Recent farm photos (tagged to dogs)
+const FarmPhotosCard = ({ userId, userRole }: { userId: string; userRole: string }) => {
+  const [photos, setPhotos] = useState<Array<{
+    id: string;
+    photo_url: string;
+    caption?: string;
+    photo_date: string;
+    dog_names?: string[];
+    uploader_name?: string;
   }>>([]);
   const [loading, setLoading] = useState(true);
-  const [viewAs, setViewAs] = useState<PhotoViewAs>(userRole === 'trainer' ? 'trainer' : 'parent');
   const router = useRouter();
 
   useEffect(() => {
     const loadPhotos = async () => {
-      if (!userId || (userRole !== 'parent' && userRole !== 'trainer')) {
+      if (!userId) {
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
-        console.log('Loading photos for user:', userId, 'as:', viewAs);
-        const recentPhotos = await getRecentMessagePhotos(userId, viewAs);
-        console.log('Loaded photos:', recentPhotos.length);
-        setPhotos(recentPhotos);
+        const response = await authenticatedGet('/api/farm-photos');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Loaded farm photos:', data.length);
+          setPhotos(data.slice(0, 6)); // Show 6 most recent
+        } else {
+          const errorText = await response.text();
+          console.error('Failed to load farm photos:', response.status, errorText);
+          setPhotos([]);
+        }
       } catch (error) {
-        console.error('Error loading photos:', error);
+        console.error('Error loading farm photos:', error);
         setPhotos([]);
       } finally {
         setLoading(false);
       }
     };
-
     loadPhotos();
-  }, [userId, userRole, viewAs]);
-
-  const showToggle = userRole === 'parent' || userRole === 'trainer';
+  }, [userId]);
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <PhotoIcon className="h-5 w-5" />
-              Recent photos from messages
-            </CardTitle>
-            <CardDescription>
-              {viewAs === 'parent' 
-                ? 'Photos sent to you by trainers'
-                : 'Photos you sent to dog owners'}
-            </CardDescription>
-          </div>
-          {showToggle && (
-            <div className="flex rounded-lg border border-gray-300 p-0.5 bg-gray-50">
-              <button
-                type="button"
-                onClick={() => setViewAs('parent')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  viewAs === 'parent' 
-                    ? 'bg-[rgb(0_32_96)] text-white' 
-                    : 'text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Photos I received
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewAs('trainer')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  viewAs === 'trainer' 
-                    ? 'bg-[rgb(0_32_96)] text-white' 
-                    : 'text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Photos I sent
-              </button>
-            </div>
-          )}
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <PhotoIcon className="h-5 w-5" />
+            {userRole === 'parent' ? 'Recent Farm Photos' : 'Farm Photos'}
+          </CardTitle>
+          <CardDescription>
+            {userRole === 'parent'
+              ? 'Photos of your dogs at the farm'
+              : 'Photos from farm bookings'}
+          </CardDescription>
         </div>
       </CardHeader>
       <CardContent>
@@ -230,22 +206,22 @@ const RecentMessagePhotosCard = ({ userId, userRole }: { userId: string; userRol
                 if (photo) {
                   return (
                     <button
-                      key={`photo-${i}-${photo.file_url}`}
+                      key={`photo-${i}-${photo.id}`}
                       type="button"
-                      onClick={() => window.open(photo.file_url, '_blank')}
+                      onClick={() => window.open(photo.photo_url, '_blank')}
                       className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 hover:ring-2 hover:ring-[rgb(0_32_96)] focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] transition-all"
                     >
                       <Image
-                        src={photo.file_url}
-                        alt={photo.file_name}
+                        src={photo.photo_url}
+                        alt={photo.caption || 'Farm photo'}
                         fill
                         className="object-cover"
                         sizes="(max-width: 640px) 50vw, 33vw"
                         unoptimized
                       />
-                      {photo.sender_name && (
+                      {photo.dog_names && photo.dog_names.length > 0 && (
                         <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs py-1 px-2 truncate">
-                          {photo.sender_name}
+                          {photo.dog_names.join(', ')}
                         </span>
                       )}
                     </button>
@@ -266,26 +242,19 @@ const RecentMessagePhotosCard = ({ userId, userRole }: { userId: string; userRol
               <div className="text-center py-6">
                 <PhotoIcon className="h-12 w-12 mx-auto text-gray-300 mb-2" />
                 <p className="text-gray-500 text-sm">
-                  {viewAs === 'parent' 
-                    ? 'No photos received from trainers yet'
-                    : 'No photos sent to owners yet'}
+                  {userRole === 'parent'
+                    ? 'No farm photos yet'
+                    : 'No photos uploaded yet'}
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
-                  Photos sent in messages will appear here
+                  {userRole === 'parent'
+                    ? 'Photos from farm bookings will appear here'
+                    : 'Upload photos from the bookings page'}
                 </p>
               </div>
             )}
           </>
         )}
-        
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4 w-full text-gray-900"
-          onClick={() => router.push('/messages')}
-        >
-          Open Messages
-        </Button>
       </CardContent>
     </Card>
   );
@@ -491,6 +460,9 @@ export default function DashboardPage() {
   const renderTrainerDashboard = () => <TrainerScheduleCard trainerStats={stats as TrainerStats} />;
   const renderParentDashboard = () => <ParentDogsCard userId={user.id} />;
 
+  // Check if parent is unverified
+  const isUnverifiedParent = user.role === 'parent' && user.verification_status !== 'verified';
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -498,7 +470,7 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600">Welcome back, {user.full_name || user.email}!</p>
         </div>
-        {(user.role === 'admin' || user.role === 'parent') && (
+        {(user.role === 'admin' || (user.role === 'parent' && !isUnverifiedParent)) && (
           <Button 
             className="bg-[rgb(0_32_96)] text-white hover:bg-[rgb(0_24_72)]" 
             onClick={() => setShowCreateModal(true)}
@@ -508,12 +480,18 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Show verification holding screen for unverified parents */}
+      {isUnverifiedParent && (
+        <VerificationHoldingScreen />
+      )}
+
       {user.role === 'admin' && renderAdminDashboard()}
       {user.role === 'trainer' && renderTrainerDashboard()}
+      {/* Parent dashboard - dogs and messages still visible for unverified */}
       {user.role === 'parent' && renderParentDashboard()}
 
-      {(user.role === 'parent' || user.role === 'trainer') && (
-        <RecentMessagePhotosCard userId={user.id} userRole={user.role} />
+      {(user.role === 'parent' || user.role === 'trainer' || user.role === 'admin') && (
+        <FarmPhotosCard userId={user.id} userRole={user.role} />
       )}
 
       <CreateBookingModal

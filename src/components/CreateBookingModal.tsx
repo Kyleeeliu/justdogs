@@ -10,6 +10,8 @@ import { authenticatedGet } from '@/lib/api/apiClient';
 export interface BookingFormData {
   dog_ids: string[];
   duration_minutes: number;
+  duration_type?: 'minutes' | 'days';
+  duration_days?: number;
   booking_type: string;
   start_time: string;
   notes?: string;
@@ -40,21 +42,18 @@ interface CreateBookingModalProps {
 }
 
 const CATEGORIES = [
-  { value: 'behavior_and_home',          label: 'Behaviour & Home' },
-  { value: 'academy',                    label: 'Academy' },
-  { value: 'farm',                       label: 'Farm' },
-  { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
+  { value: 'farm', label: 'Farm' },
 ];
 
-const DURATION_OPTIONS = [
-  { value: 40,  label: '40 minutes' },
-  { value: 60,  label: '1 hour' },
-  { value: 90,  label: '90 minutes' },
-  { value: 120, label: '2 hours' },
-  { value: 150, label: '2.5 hours' },
-  { value: 180, label: '3 hours' },
-  { value: 240, label: '4 hours' },
-  { value: 0,   label: 'Custom…' },
+const DURATION_OPTIONS_DAYS = [
+  { value: 1, label: '1 day' },
+  { value: 2, label: '2 days' },
+  { value: 3, label: '3 days' },
+  { value: 4, label: '4 days' },
+  { value: 5, label: '5 days' },
+  { value: 7, label: '1 week' },
+  { value: 14, label: '2 weeks' },
+  { value: 0, label: 'Custom…' },
 ];
 
 function toLocalDatetimeLocal(d: Date): string {
@@ -66,8 +65,8 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
   const [dog_ids, setDogIds] = useState<string[]>([]);
   const [booking_type, setBookingType] = useState('');
   const [start_time, setStartTime] = useState('');
-  const [durationPreset, setDurationPreset] = useState(40);
-  const [customMinutes, setCustomMinutes] = useState(60);
+  const [durationPresetDays, setDurationPresetDays] = useState(1);
+  const [customDays, setCustomDays] = useState(1);
   const [notes, setNotes] = useState('');
   const [location, setLocation] = useState('');
   const [trainer_id, setTrainerId] = useState('');
@@ -80,7 +79,8 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
   const [dbBookingTypes, setDbBookingTypes] = useState<DbBookingType[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(false);
 
-  const durationMinutes = durationPreset === 0 ? customMinutes : durationPreset;
+  // Farm bookings use days
+  const durationDays = durationPresetDays === 0 ? customDays : durationPresetDays;
 
   // Load booking types from DB when modal opens
   useEffect(() => {
@@ -99,6 +99,8 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
     const now = new Date();
     now.setSeconds(0, 0);
 
+    const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD for farm bookings
+
     if (initialValues) {
       // Pre-fill for duplicate
       const initDogIds = initialValues.dog_ids?.length
@@ -108,20 +110,20 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
           : [];
       setDogIds(initDogIds);
       setBookingType(initialValues.booking_type || '');
-      setStartTime(toLocalDatetimeLocal(now)); // always fresh start time
-      const dur = initialValues.duration_minutes ?? 40;
-      const preset = DURATION_OPTIONS.find(o => o.value === dur && o.value !== 0)?.value ?? 0;
-      setDurationPreset(preset);
-      setCustomMinutes(preset === 0 ? dur : 60);
+      setStartTime(dateStr); // farm bookings: date only
+      const dur = initialValues.duration_days ?? 1;
+      const preset = DURATION_OPTIONS_DAYS.find(o => o.value === dur && o.value !== 0)?.value ?? 0;
+      setDurationPresetDays(preset);
+      setCustomDays(preset === 0 ? dur : 1);
       setNotes(initialValues.notes || '');
       setLocation(initialValues.location || '');
       setTrainerId(initialValues.trainer_id || '');
     } else {
       setDogIds([]);
       setBookingType('');
-      setStartTime(toLocalDatetimeLocal(now));
-      setDurationPreset(40);
-      setCustomMinutes(60);
+      setStartTime(dateStr);
+      setDurationPresetDays(1);
+      setCustomDays(1);
       setNotes('');
       setLocation('');
       setTrainerId('');
@@ -137,22 +139,19 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
     if (errors.dog_ids) setErrors(prev => ({ ...prev, dog_ids: '' }));
   };
 
-  const handleBookingTypeSelect = (typeName: string, dur?: number) => {
+  const handleBookingTypeSelect = (typeName: string) => {
     setBookingType(typeName);
     setErrors(p => ({ ...p, booking_type: '' }));
-    if (dur) {
-      const preset = DURATION_OPTIONS.find(o => o.value === dur && o.value !== 0)?.value ?? 0;
-      setDurationPreset(preset);
-      if (preset === 0) setCustomMinutes(dur);
-    }
+    // Farm bookings default to 1 day
+    setDurationPresetDays(1);
   };
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (dog_ids.length === 0) e.dog_ids = 'Please select at least one dog';
     if (!booking_type) e.booking_type = 'Please select a booking type';
-    if (!start_time) e.start_time = 'Please select a start date and time';
-    if (durationMinutes < 5) e.duration = 'Duration must be at least 5 minutes';
+    if (!start_time) e.start_time = 'Please select a start date';
+    if (durationDays < 1) e.duration = 'Duration must be at least 1 day';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -164,9 +163,11 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
     try {
       await onSave({
         dog_ids,
-        duration_minutes: durationMinutes,
+        duration_minutes: 0, // not used for farm bookings
+        duration_type: 'days',
+        duration_days: durationDays,
         booking_type,
-        start_time,
+        start_time: `${start_time}T00:00:00`, // convert date to start of day
         notes: notes || undefined,
         location: location || undefined,
         trainer_id: trainer_id || undefined,
@@ -223,7 +224,7 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
               {dogs.length === 0 ? (
                 <p className="text-sm text-gray-500 italic">No dogs available. Add a dog first.</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-2">
                   {dogs.map(dog => {
                     const selected = dog_ids.includes(dog.id);
                     return (
@@ -232,7 +233,7 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
                         type="button"
                         onClick={() => toggleDog(dog.id)}
                         disabled={submitting}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-left transition-colors ${
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-left transition-colors ${
                           selected
                             ? 'border-[rgb(0_32_96)] bg-blue-50 text-[rgb(0_32_96)]'
                             : 'border-gray-200 hover:border-gray-300 text-gray-700'
@@ -330,55 +331,20 @@ export function CreateBookingModal({ isOpen, onClose, onSave, dogs, trainers, us
               </div>
             )}
 
-            {/* ── Start time + Duration ── */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  <ClockIcon className="inline h-4 w-4 mr-1 text-gray-400" />
-                  Start Date & Time <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={start_time}
-                  onChange={e => { setStartTime(e.target.value); setErrors(p => ({ ...p, start_time: '' })); }}
-                  disabled={submitting}
-                />
-                {errors.start_time && <p className="text-sm text-red-600">{errors.start_time}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Duration</label>
-                <select
-                  value={durationPreset}
-                  onChange={e => { setDurationPreset(Number(e.target.value)); setErrors(p => ({ ...p, duration: '' })); }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
-                  disabled={submitting}
-                >
-                  {DURATION_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                {durationPreset === 0 && (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={5}
-                      max={480}
-                      value={customMinutes}
-                      onChange={e => setCustomMinutes(Math.max(5, Number(e.target.value)))}
-                      disabled={submitting}
-                      className="w-24"
-                    />
-                    <span className="text-sm text-gray-600">minutes</span>
-                  </div>
-                )}
-                {errors.duration && <p className="text-sm text-red-600">{errors.duration}</p>}
-                {durationMinutes > 0 && start_time && (
-                  <p className="text-xs text-gray-500">
-                    Ends at {new Date(new Date(start_time).getTime() + durationMinutes * 60000).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' })}
-                  </p>
-                )}
-              </div>
+            {/* ── Start date only (farm = full day) ── */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                <CalendarIcon className="inline h-4 w-4 mr-1 text-gray-400" />
+                Farm Date <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="date"
+                value={start_time}
+                onChange={e => { setStartTime(e.target.value); setErrors(p => ({ ...p, start_time: '' })); }}
+                disabled={submitting}
+              />
+              {errors.start_time && <p className="text-sm text-red-600">{errors.start_time}</p>}
+              <p className="text-xs text-gray-500">Farm bookings are full-day stays</p>
             </div>
 
             {/* ── Trainer (admin only) ── */}

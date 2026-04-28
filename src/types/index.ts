@@ -9,6 +9,7 @@ export interface User {
   phone?: string;
   avatar_url?: string;
   approval_status?: ApprovalStatus; // For trainers requiring admin approval
+  verification_status?: 'pending' | 'verified' | 'rejected'; // For parents requiring verification before booking
   created_at: string;
   updated_at: string;
 }
@@ -53,6 +54,8 @@ export interface Booking {
   status: BookingStatus;
   start_time: string;
   end_time: string;
+  duration_type?: 'minutes' | 'days'; // minutes for timed sessions, days for farm bookings
+  duration_days?: number; // for farm bookings (whole-day stays)
   special_instructions?: string;
   notes?: string;
   location?: string;
@@ -138,6 +141,25 @@ export interface Conversation {
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface FarmPhoto {
+  id: string;
+  booking_id: string;
+  uploaded_by: string;
+  photo_url: string;
+  caption?: string;
+  photo_date: string; // ISO date string
+  created_at: string;
+  updated_at: string;
+  // Enriched fields (from joins)
+  dog_ids?: string[];
+  dog_names?: string[];
+  uploader_name?: string;
+}
+
+export interface FarmPhotoWithDogs extends FarmPhoto {
+  dogs: Array<{ id: string; name: string }>;
 }
 
 export interface ConversationParticipant {

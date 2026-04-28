@@ -21,6 +21,7 @@ import {
   DocumentDuplicateIcon,
   PencilIcon,
   TrashIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/hooks/useAuth';
 import { Booking, BookingStatus, Dog, User } from '@/types';
@@ -29,6 +30,7 @@ import { formatDateTime, formatTime } from '@/lib/utils';
 import { getAllDogs, getDogsByOwner } from '@/lib/supabase/dogs';
 import { getUsersByRole } from '@/lib/supabase/users';
 import { CreateBookingModal, BookingFormData } from '@/components/CreateBookingModal';
+import { FarmPhotoUpload } from '@/components/FarmPhotoUpload';
 
 interface BookingWithDetails extends Booking {
   dog?: Dog;
@@ -41,12 +43,14 @@ export default function BookingsSessionsPage() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
-  const [showUpcomingOnly, setShowUpcomingOnly] = useState(true);
+  const [showUpcomingOnly, setShowUpcomingOnly] = useState(user?.role === 'parent' ? false : true);
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>(user?.role === 'parent' ? 'today' : 'all');
   const [search, setSearch] = useState('');
   const [expandedBookings, setExpandedBookings] = useState<Set<string>>(new Set());
   const [pageTab, setPageTab] = useState<'bookings' | 'booking-types'>('bookings');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [duplicateValues, setDuplicateValues] = useState<any>(null);
+  const [showPhotoUpload, setShowPhotoUpload] = useState<string | null>(null); // booking ID
 
   // Booking types state (admin only)
   const [bookingTypesList, setBookingTypesList] = useState<Array<{ id: string; name: string; category: string; duration_minutes: number; price_per_dog: number }>>([]);
@@ -55,10 +59,7 @@ export default function BookingsSessionsPage() {
   const [btError, setBtError] = useState('');
 
   const BT_CATEGORIES = [
-    { value: 'behavior_and_home',             label: 'Behaviour & Home' },
-    { value: 'academy',                       label: 'Academy' },
-    { value: 'farm',                          label: 'Farm' },
-    { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
+    { value: 'farm', label: 'Farm' },
   ];
 
   const loadBookingTypes = async () => {
@@ -435,7 +436,7 @@ export default function BookingsSessionsPage() {
           <p className="text-gray-600 mt-1">Manage your training sessions and bookings</p>
         </div>
         <div className="flex gap-2">
-          {pageTab === 'bookings' && (user?.role === 'admin' || user?.role === 'parent') && (
+          {pageTab === 'bookings' && (user?.role === 'admin' || (user?.role === 'parent' && user?.verification_status === 'verified')) && (
             <Button onClick={() => setShowCreateModal(true)} className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]">
               <PlusIcon className="h-4 w-4 mr-2" />
               New Booking
@@ -566,39 +567,41 @@ export default function BookingsSessionsPage() {
       {/* Everything below only shows on the Bookings tab */}
       {pageTab !== 'booking-types' && (<>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card className="hover:shadow-md transition-shadow">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-            <p className="text-sm text-gray-600 mt-1">Total</p>
-          </CardContent>
-        </Card>
-        <Card className="hover:shadow-md transition-shadow">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-            <p className="text-sm text-gray-600 mt-1">Pending</p>
-          </CardContent>
-        </Card>
-        <Card className="hover:shadow-md transition-shadow">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">{stats.confirmed}</div>
-            <p className="text-sm text-gray-600 mt-1">Confirmed</p>
-          </CardContent>
-        </Card>
-        <Card className="hover:shadow-md transition-shadow">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">{stats.upcoming}</div>
-            <p className="text-sm text-gray-600 mt-1">Upcoming</p>
-          </CardContent>
-        </Card>
-        <Card className="hover:shadow-md transition-shadow">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-gray-600">{stats.completed}</div>
-            <p className="text-sm text-gray-600 mt-1">Completed</p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Statistics Cards - Only for trainers and admins */}
+      {user?.role !== 'parent' && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+              <p className="text-sm text-gray-600 mt-1">Total</p>
+            </CardContent>
+          </Card>
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+              <p className="text-sm text-gray-600 mt-1">Pending</p>
+            </CardContent>
+          </Card>
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-blue-600">{stats.confirmed}</div>
+              <p className="text-sm text-gray-600 mt-1">Confirmed</p>
+            </CardContent>
+          </Card>
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-green-600">{stats.upcoming}</div>
+              <p className="text-sm text-gray-600 mt-1">Upcoming</p>
+            </CardContent>
+          </Card>
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="text-2xl font-bold text-gray-600">{stats.completed}</div>
+              <p className="text-sm text-gray-600 mt-1">Completed</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
@@ -612,16 +615,61 @@ export default function BookingsSessionsPage() {
           />
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          {/* Upcoming toggle */}
-          <Button
-            size="sm"
-            variant={showUpcomingOnly ? 'default' : 'outline'}
-            onClick={() => setShowUpcomingOnly(v => !v)}
-            className={showUpcomingOnly ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
-          >
-            Upcoming
-          </Button>
-          <span className="text-gray-300 hidden sm:inline">|</span>
+          {/* Date filter for parents */}
+          {user?.role === 'parent' && (
+            <>
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'today' ? 'default' : 'ghost'}
+                  onClick={() => setDateFilter('today')}
+                  className={dateFilter === 'today' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+                >
+                  Today
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'week' ? 'default' : 'ghost'}
+                  onClick={() => setDateFilter('week')}
+                  className={dateFilter === 'week' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+                >
+                  This Week
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'month' ? 'default' : 'ghost'}
+                  onClick={() => setDateFilter('month')}
+                  className={dateFilter === 'month' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+                >
+                  This Month
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'all' ? 'default' : 'ghost'}
+                  onClick={() => setDateFilter('all')}
+                  className={dateFilter === 'all' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+                >
+                  All
+                </Button>
+              </div>
+              <span className="text-gray-300 hidden sm:inline">|</span>
+            </>
+          )}
+          
+          {/* Upcoming toggle for trainers/admins */}
+          {user?.role !== 'parent' && (
+            <>
+              <Button
+                size="sm"
+                variant={showUpcomingOnly ? 'default' : 'outline'}
+                onClick={() => setShowUpcomingOnly(v => !v)}
+                className={showUpcomingOnly ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+              >
+                Upcoming
+              </Button>
+              <span className="text-gray-300 hidden sm:inline">|</span>
+            </>
+          )}
           {(['all', 'pending', 'confirmed', 'completed', 'cancelled'] as const).map(status => (
             <Button
               key={status}
@@ -651,7 +699,7 @@ export default function BookingsSessionsPage() {
                   ? 'No upcoming bookings. Toggle "Upcoming" off to see past bookings.'
                   : `You don't have any bookings yet`}
             </p>
-            {(user?.role === 'admin' || user?.role === 'parent') && !search && filter === 'all' && (
+            {(user?.role === 'admin' || (user?.role === 'parent' && user?.verification_status === 'verified')) && !search && filter === 'all' && (
               <Button 
                 onClick={() => setShowCreateModal(true)}
                 className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
@@ -710,10 +758,18 @@ export default function BookingsSessionsPage() {
 
                               {/* Metadata: stacks on mobile, inline on sm+ */}
                               <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1 text-sm text-gray-600">
-                                <div className="flex items-center gap-1">
-                                  <ClockIcon className="h-4 w-4 flex-shrink-0" />
-                                  <span>{formatTime(booking.start_time)} – {formatTime(booking.end_time)}</span>
-                                </div>
+                                {/* Farm bookings show duration in days, not times */}
+                                {(booking as any).duration_type === 'days' ? (
+                                  <div className="flex items-center gap-1">
+                                    <CalendarIcon className="h-4 w-4 flex-shrink-0" />
+                                    <span>{(booking as any).duration_days} day{(booking as any).duration_days !== 1 ? 's' : ''}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <ClockIcon className="h-4 w-4 flex-shrink-0" />
+                                    <span>{formatTime(booking.start_time)} – {formatTime(booking.end_time)}</span>
+                                  </div>
+                                )}
                                 {booking.dog && (
                                   <div className="flex items-center gap-1">
                                     <UserIcon className="h-4 w-4 flex-shrink-0" />
@@ -743,7 +799,7 @@ export default function BookingsSessionsPage() {
 
                             {/* Right actions + chevron */}
                             <div className="flex items-center gap-1 flex-shrink-0">
-                              {user?.role === 'admin' && (
+                              {(user?.role === 'admin' || (user?.role === 'parent' && user?.verification_status === 'verified')) && (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -870,10 +926,11 @@ export default function BookingsSessionsPage() {
                                 </p>
                               </div>
                             )}
-                            {/* Trainer feedback */}
-                            <div>
-                              <div className="flex items-center justify-between mb-3">
-                                <h4 className="text-base font-semibold text-gray-900">Trainer Feedback</h4>
+                            {/* Trainer feedback - hide section for parents if no feedback */}
+                            {(booking.trainer_notes || user?.role === 'trainer' || user?.role === 'admin') && (
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="text-base font-semibold text-gray-900">Trainer Feedback</h4>
                                 {(user?.role === 'trainer' || user?.role === 'admin') && editingNotes !== booking.id && (
                                   <button
                                     onClick={() => { setEditingNotes(booking.id); setNotesInput(booking.trainer_notes || ''); }}
@@ -913,10 +970,29 @@ export default function BookingsSessionsPage() {
                                 </p>
                               ) : (
                                 <p className="text-sm text-gray-400 italic">
-                                  {(user?.role === 'trainer' || user?.role === 'admin') ? 'No feedback added yet.' : 'No trainer feedback yet.'}
+                                  No feedback added yet.
                                 </p>
                               )}
-                            </div>
+                              </div>
+                            )}
+
+                            {/* Farm Photo Upload (trainers/admins only) */}
+                            {(user?.role === 'trainer' || user?.role === 'admin') && (
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="text-base font-semibold text-gray-900">Farm Photos</h4>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setShowPhotoUpload(booking.id)}
+                                    className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+                                  >
+                                    <PhotoIcon className="h-4 w-4 mr-2" />
+                                    Upload Photo
+                                  </Button>
+                                </div>
+                                <p className="text-sm text-gray-500">Upload photos from this farm booking to share with the parent</p>
+                              </div>
+                            )}
 
                             <div className="flex justify-between items-center text-xs text-gray-500 pt-2 border-t border-gray-200">
                               <span>Created: {new Date(booking.created_at).toLocaleDateString()}</span>
@@ -935,6 +1011,23 @@ export default function BookingsSessionsPage() {
       )}
 
       </>)}
+
+      {/* Farm Photo Upload Modal */}
+      {showPhotoUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <FarmPhotoUpload
+              bookingId={showPhotoUpload}
+              availableDogs={dogs}
+              onUploadComplete={() => {
+                setShowPhotoUpload(null);
+                // Optionally reload bookings to show updated photo count
+              }}
+              onClose={() => setShowPhotoUpload(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Create Booking Modal */}
       {user && (

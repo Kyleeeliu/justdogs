@@ -26,10 +26,7 @@ import { getAllDogs } from '@/lib/supabase/dogs';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BOOKING_CATEGORIES = [
-  { value: 'behavior_and_home', label: 'Behaviour & Home' },
-  { value: 'academy', label: 'Academy' },
   { value: 'farm', label: 'Farm' },
-  { value: 'service_and_emotional_support', label: 'Service & Emotional Support' },
 ];
 
 interface DbBookingType {
