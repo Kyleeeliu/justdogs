@@ -6,13 +6,12 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { getUnreadMessageCount } from '@/lib/supabase/messages';
 
 import {
   HomeIcon,
   UserGroupIcon,
   CalendarIcon,
-  ChatBubbleLeftRightIcon,
+  ShoppingBagIcon,
   UserIcon,
   Bars3Icon,
   XMarkIcon,
@@ -25,13 +24,14 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon, mobileLabel: 'Home' },
   { name: 'Dogs', href: '/dogs', icon: UserGroupIcon, mobileLabel: 'Dogs' },
   { name: 'Bookings & Sessions', href: '/bookings-sessions', icon: CalendarIcon, mobileLabel: 'Bookings' },
-  { name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon, mobileLabel: 'Messages' },
+  { name: 'Store', href: '/store', icon: ShoppingBagIcon, mobileLabel: 'Store' },
   { name: 'News & Events', href: '/news', icon: NewspaperIcon, mobileLabel: 'News' },
   { name: 'Profile', href: '/profile', icon: UserIcon, mobileLabel: 'Profile' },
 ];
 
 const adminNavigation = [
   { name: 'Content Management', href: '/admin/content-management', icon: CogIcon, mobileLabel: 'Admin' },
+  { name: 'Store Management', href: '/admin/store-management', icon: ShoppingBagIcon, mobileLabel: 'Store' },
 ];
 
 export default function DashboardLayout({
@@ -40,10 +40,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const pathname = usePathname();
-  const pathnameRef = useRef(pathname);
-  pathnameRef.current = pathname;
   const router = useRouter();
   const { user, loading, initialized, logout, isAuthenticated } = useAuth();
 
@@ -59,55 +56,6 @@ export default function DashboardLayout({
     }
   }, [initialized, loading, isAuthenticated, user, router]);
 
-  // Load unread message count
-  useEffect(() => {
-    const loadUnreadCount = async () => {
-      if (!user) return;
-      // Don't poll while the user is on the messages page — they're reading messages
-      if (pathnameRef.current === '/messages') return;
-
-      try {
-        const unreadCount = await getUnreadMessageCount(user.id);
-        setUnreadMessageCount(unreadCount);
-      } catch (error) {
-        console.error('Error loading unread message count:', error);
-        setUnreadMessageCount(0);
-      }
-    };
-
-    loadUnreadCount();
-
-    // Set up interval to refresh unread count every 30 seconds
-    const interval = setInterval(loadUnreadCount, 30000);
-
-    return () => clearInterval(interval);
-  }, [user]);
-
-  // Listen for messages read events and clear unread count when visiting messages page
-  useEffect(() => {
-    const handleMessagesRead = (event: CustomEvent) => {
-      setUnreadMessageCount(prev => Math.max(0, prev - event.detail.count));
-    };
-
-    // Listen for custom event from messages page
-    window.addEventListener('messagesRead', handleMessagesRead as EventListener);
-
-    if (pathname === '/messages') {
-      // Small delay to allow messages to be marked as read
-      const timer = setTimeout(() => {
-        setUnreadMessageCount(0);
-      }, 1000);
-      
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener('messagesRead', handleMessagesRead as EventListener);
-      };
-    }
-
-    return () => {
-      window.removeEventListener('messagesRead', handleMessagesRead as EventListener);
-    };
-  }, [pathname]);
 
   const handleSignOut = async () => {
     try {
@@ -172,7 +120,6 @@ export default function DashboardLayout({
           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
-              const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
               return (
                 <Link
                   key={item.name}
@@ -186,11 +133,6 @@ export default function DashboardLayout({
                 >
                   <item.icon className="mr-3 h-6 w-6" />
                   <span className="flex-1">{item.name}</span>
-                  {showBadge && (
-                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
-                      {unreadMessageCount}
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -268,7 +210,6 @@ export default function DashboardLayout({
           <nav className="flex-1 space-y-1 px-2 py-4">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
-              const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
               return (
                 <Link
                   key={item.name}
@@ -281,11 +222,6 @@ export default function DashboardLayout({
                 >
                   <item.icon className="mr-3 h-5 w-5" />
                   <span className="flex-1">{item.name}</span>
-                  {showBadge && (
-                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[18px] text-center">
-                      {unreadMessageCount}
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -374,7 +310,6 @@ export default function DashboardLayout({
           <nav className="flex">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
-              const showBadge = item.name === 'Messages' && unreadMessageCount > 0;
               const label = (item as { mobileLabel?: string }).mobileLabel ?? item.name;
               return (
                 <Link
@@ -388,11 +323,6 @@ export default function DashboardLayout({
                 >
                   <div className="relative flex-shrink-0">
                     <item.icon className="h-5 w-5 mb-0.5" />
-                    {showBadge && (
-                      <span className="absolute -top-0.5 -right-1 bg-red-500 text-white text-[10px] rounded-full px-1 py-0 min-w-[14px] text-center leading-none">
-                        {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                      </span>
-                    )}
                   </div>
                   <span className="truncate w-full text-center max-w-[52px]">{label}</span>
                 </Link>

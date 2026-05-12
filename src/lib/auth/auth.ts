@@ -451,17 +451,56 @@ export async function clearAuthState() {
 
 /**
  * Check if an error is related to refresh token issues
+ * Uses the same comprehensive detection logic as AuthRecovery
  */
 export function isRefreshTokenError(error: any): boolean {
     if (!error) return false;
     
-    const message = error.message || error.toString();
-    const errorName = error.name || '';
+    const message = (error.message || error.toString()).toLowerCase();
+    const errorName = (error.name || '').toLowerCase();
+    const errorCode = error.code || error.error_code || '';
     
-    return message.includes('refresh_token_not_found') ||
-           message.includes('Invalid Refresh Token') ||
-           message.includes('Refresh Token Not Found') ||
-           message.includes('AuthApiError') ||
-           errorName.includes('AuthApiError') ||
-           (error.status === 400 && message.includes('refresh'));
+    // Check for various refresh token error patterns
+    const refreshTokenPatterns = [
+      'refresh_token_not_found',
+      'invalid refresh token',
+      'refresh token not found',
+      'refresh token expired',
+      'refresh token invalid',
+      'token_refresh_failed',
+      'session_not_found',
+      'invalid_token',
+      'jwt expired',
+      'jwt malformed',
+      'invalid jwt',
+      'token expired',
+      'authentication failed',
+      'unauthorized'
+    ];
+    
+    // Check for AuthApiError patterns
+    const authApiErrorPatterns = [
+      'authapierror',
+      'auth api error',
+      'authentication error',
+      'authorization error'
+    ];
+    
+    // Check message content
+    const hasRefreshTokenError = refreshTokenPatterns.some(pattern =>
+      message.includes(pattern)
+    );
+    
+    const hasAuthApiError = authApiErrorPatterns.some(pattern =>
+      message.includes(pattern) || errorName.includes(pattern)
+    );
+    
+    // Check for specific HTTP status codes that indicate auth issues
+    const hasAuthStatusCode = (error.status === 400 || error.status === 401 || error.status === 403) &&
+                             (message.includes('refresh') || message.includes('token') || message.includes('auth'));
+    
+    // Check for specific error codes
+    const hasAuthErrorCode = ['invalid_token', 'token_expired', 'refresh_token_not_found', 'session_not_found'].includes(errorCode);
+    
+    return hasRefreshTokenError || hasAuthApiError || hasAuthStatusCode || hasAuthErrorCode;
 }

@@ -44,7 +44,7 @@ export default function BookingsSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
   const [showUpcomingOnly, setShowUpcomingOnly] = useState(user?.role === 'parent' ? false : true);
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>(user?.role === 'parent' ? 'today' : 'all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('today');
   const [search, setSearch] = useState('');
   const [expandedBookings, setExpandedBookings] = useState<Set<string>>(new Set());
   const [pageTab, setPageTab] = useState<'bookings' | 'booking-types'>('bookings');
@@ -327,6 +327,33 @@ export default function BookingsSessionsPage() {
   // Filter bookings
   const now = new Date();
   const filteredBookings = bookings.filter(b => {
+    // Date filter
+    if (dateFilter !== 'all') {
+      const bookingDate = new Date(b.start_time);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      switch (dateFilter) {
+        case 'today':
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          if (bookingDate < today || bookingDate >= tomorrow) return false;
+          break;
+        case 'week':
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay());
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 7);
+          if (bookingDate < weekStart || bookingDate >= weekEnd) return false;
+          break;
+        case 'month':
+          const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+          const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+          if (bookingDate < monthStart || bookingDate >= monthEnd) return false;
+          break;
+      }
+    }
+
     // Upcoming-only toggle: hide past bookings (skip when on Completed tab so past sessions show)
     if (showUpcomingOnly && filter !== 'completed' && isPast(b)) return false;
 
@@ -568,7 +595,7 @@ export default function BookingsSessionsPage() {
       {pageTab !== 'booking-types' && (<>
 
       {/* Statistics Cards - Only for trainers and admins */}
-      {user?.role !== 'parent' && (
+      {(user?.role === 'trainer' || user?.role === 'admin') && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card className="hover:shadow-md transition-shadow">
             <CardContent className="p-4">
@@ -615,46 +642,42 @@ export default function BookingsSessionsPage() {
           />
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          {/* Date filter for parents */}
-          {user?.role === 'parent' && (
-            <>
-              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-                <Button
-                  size="sm"
-                  variant={dateFilter === 'today' ? 'default' : 'ghost'}
-                  onClick={() => setDateFilter('today')}
-                  className={dateFilter === 'today' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
-                >
-                  Today
-                </Button>
-                <Button
-                  size="sm"
-                  variant={dateFilter === 'week' ? 'default' : 'ghost'}
-                  onClick={() => setDateFilter('week')}
-                  className={dateFilter === 'week' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
-                >
-                  This Week
-                </Button>
-                <Button
-                  size="sm"
-                  variant={dateFilter === 'month' ? 'default' : 'ghost'}
-                  onClick={() => setDateFilter('month')}
-                  className={dateFilter === 'month' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
-                >
-                  This Month
-                </Button>
-                <Button
-                  size="sm"
-                  variant={dateFilter === 'all' ? 'default' : 'ghost'}
-                  onClick={() => setDateFilter('all')}
-                  className={dateFilter === 'all' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
-                >
-                  All
-                </Button>
-              </div>
-              <span className="text-gray-300 hidden sm:inline">|</span>
-            </>
-          )}
+          {/* Date filter */}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <Button
+              size="sm"
+              variant={dateFilter === 'today' ? 'default' : 'ghost'}
+              onClick={() => setDateFilter('today')}
+              className={dateFilter === 'today' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+            >
+              Today
+            </Button>
+            <Button
+              size="sm"
+              variant={dateFilter === 'week' ? 'default' : 'ghost'}
+              onClick={() => setDateFilter('week')}
+              className={dateFilter === 'week' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+            >
+              This Week
+            </Button>
+            <Button
+              size="sm"
+              variant={dateFilter === 'month' ? 'default' : 'ghost'}
+              onClick={() => setDateFilter('month')}
+              className={dateFilter === 'month' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+            >
+              This Month
+            </Button>
+            <Button
+              size="sm"
+              variant={dateFilter === 'all' ? 'default' : 'ghost'}
+              onClick={() => setDateFilter('all')}
+              className={dateFilter === 'all' ? 'bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]' : ''}
+            >
+              All
+            </Button>
+          </div>
+          <span className="text-gray-300 hidden sm:inline">|</span>
           
           {/* Upcoming toggle for trainers/admins */}
           {user?.role !== 'parent' && (
@@ -746,7 +769,7 @@ export default function BookingsSessionsPage() {
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
-                              {/* Title row: type + badge */}
+                              {/* Title row: type + badges */}
                               <div className="flex flex-wrap items-center gap-2 mb-2">
                                 <h3 className="font-semibold text-gray-900 capitalize">
                                   {booking.booking_type.replace(/_/g, ' ')}
@@ -754,6 +777,19 @@ export default function BookingsSessionsPage() {
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${statusConfig.badge}`}>
                                   {booking.status}
                                 </span>
+                                {/* Feedback available indicator */}
+                                {booking.trainer_notes && (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap">
+                                    Feedback Available
+                                  </span>
+                                )}
+                                {/* Photo available indicator - placeholder for now */}
+                                {booking.booking_type === 'farm' && isPast(booking) && (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 whitespace-nowrap">
+                                    <PhotoIcon className="h-3 w-3 inline mr-1" />
+                                    Photos
+                                  </span>
+                                )}
                               </div>
 
                               {/* Metadata: stacks on mobile, inline on sm+ */}
@@ -927,7 +963,7 @@ export default function BookingsSessionsPage() {
                               </div>
                             )}
                             {/* Trainer feedback - hide section for parents if no feedback */}
-                            {(booking.trainer_notes || user?.role === 'trainer' || user?.role === 'admin') && (
+                            {(booking.trainer_notes || user?.role === 'trainer' || user?.role === 'admin') && (user?.role !== 'parent' || booking.trainer_notes) && (
                               <div>
                                 <div className="flex items-center justify-between mb-3">
                                   <h4 className="text-base font-semibold text-gray-900">Trainer Feedback</h4>
@@ -976,21 +1012,46 @@ export default function BookingsSessionsPage() {
                               </div>
                             )}
 
-                            {/* Farm Photo Upload (trainers/admins only) */}
-                            {(user?.role === 'trainer' || user?.role === 'admin') && (
+                            {/* Farm Photos Section */}
+                            {booking.booking_type === 'farm' && (
                               <div>
                                 <div className="flex items-center justify-between mb-3">
                                   <h4 className="text-base font-semibold text-gray-900">Farm Photos</h4>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => setShowPhotoUpload(booking.id)}
-                                    className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
-                                  >
-                                    <PhotoIcon className="h-4 w-4 mr-2" />
-                                    Upload Photo
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    {/* View Photos Button (for parents and when photos exist) */}
+                                    {isPast(booking) && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          // TODO: Implement photo viewing modal
+                                          alert('Photo viewing feature coming soon!');
+                                        }}
+                                        className="text-[rgb(0_32_96)] border-[rgb(0_32_96)] hover:bg-blue-50"
+                                      >
+                                        <PhotoIcon className="h-4 w-4 mr-2" />
+                                        View Photos
+                                      </Button>
+                                    )}
+                                    {/* Upload Photos Button (trainers/admins only) */}
+                                    {(user?.role === 'trainer' || user?.role === 'admin') && (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => setShowPhotoUpload(booking.id)}
+                                        className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
+                                      >
+                                        <PhotoIcon className="h-4 w-4 mr-2" />
+                                        Upload Photo
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
-                                <p className="text-sm text-gray-500">Upload photos from this farm booking to share with the parent</p>
+                                <p className="text-sm text-gray-500">
+                                  {user?.role === 'parent'
+                                    ? 'View photos from your dog\'s farm day experience'
+                                    : 'Upload photos from this farm booking to share with the parent'
+                                  }
+                                </p>
                               </div>
                             )}
 

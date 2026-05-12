@@ -776,6 +776,44 @@ export default function DogsPage() {
                 </div>
               )}
 
+              {/* Feedback History */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 flex items-center">
+                  <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2 text-[rgb(0_32_96)]" />
+                  Training Feedback History
+                </h3>
+                <div className="space-y-3">
+                  {/* TODO: Load actual feedback from bookings */}
+                  <div className="bg-gray-50 p-4 rounded-md border-l-4 border-l-blue-500">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm font-medium text-gray-900">Farm Day Session</p>
+                      <p className="text-xs text-gray-500">2 days ago</p>
+                    </div>
+                    <p className="text-sm text-gray-700 mb-2">
+                      Great session today! {selectedDog.name} showed excellent progress with recall training and socialized well with other dogs.
+                    </p>
+                    <p className="text-xs text-gray-500">Trainer: Sarah Johnson</p>
+                  </div>
+                  
+                  <div className="bg-gray-50 p-4 rounded-md border-l-4 border-l-green-500">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm font-medium text-gray-900">Basic Training Session</p>
+                      <p className="text-xs text-gray-500">1 week ago</p>
+                    </div>
+                    <p className="text-sm text-gray-700 mb-2">
+                      Worked on basic commands today. {selectedDog.name} is responding well to sit and stay commands. Recommend continuing with positive reinforcement.
+                    </p>
+                    <p className="text-xs text-gray-500">Trainer: Mike Thompson</p>
+                  </div>
+                  
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-500 italic">
+                      Feedback history will be loaded from actual training sessions
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Actions */}
               <div className="flex justify-between pt-4 border-t">
                 {user?.role === 'admin' && (
