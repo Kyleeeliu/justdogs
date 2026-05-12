@@ -1,34 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-async function getUserFromCookies() {
-  const cookieStore = await cookies();
-  const authCookie = cookieStore.get('sb-pajtampwqutuuidklxbv-auth-token');
-  
-  if (!authCookie) {
-    return null;
-  }
-
-  try {
-    const authData = JSON.parse(authCookie.value);
-    return authData.user;
-  } catch {
-    return null;
-  }
-}
+import { createServiceRoleClient } from '@/lib/supabase';
+import { getServerUser } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await getUserFromCookies();
+    const user = await getServerUser(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceRoleClient();
 
     const { error } = await supabase
       .from('shopping_cart')

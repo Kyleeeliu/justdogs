@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase/client-browser';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -82,6 +83,13 @@ export default function StoreManagementPage() {
     }
   }, [activeTab]);
 
+  const getAuthHeaders = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : {};
+  };
+
   const loadItems = async () => {
     setLoading(true);
     try {
@@ -100,7 +108,10 @@ export default function StoreManagementPage() {
   const loadOrders = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/store/orders');
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch('/api/store/orders', {
+        headers: authHeaders
+      });
       if (response.ok) {
         const data = await response.json();
         setOrders(data);
@@ -141,9 +152,13 @@ export default function StoreManagementPage() {
         itemData.id = editingItem.id;
       }
 
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/store/items', {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
         body: JSON.stringify(itemData)
       });
 
@@ -195,9 +210,13 @@ export default function StoreManagementPage() {
     if (collectionNote === null) return; // User cancelled
 
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/store/orders', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
         body: JSON.stringify({
           id: order.id,
           status: 'approved',
@@ -215,7 +234,10 @@ export default function StoreManagementPage() {
 
   const exportOrders = async () => {
     try {
-      const response = await fetch('/api/store/orders/export');
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch('/api/store/orders/export', {
+        headers: authHeaders
+      });
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);

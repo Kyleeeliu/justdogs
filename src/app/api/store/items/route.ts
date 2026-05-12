@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { createServiceRoleClient } from '@/lib/supabase';
+import { getServerUser } from '@/lib/supabase/server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceRoleClient();
 
     const { data: items, error } = await supabase
       .from('store_items')
@@ -29,24 +26,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceRoleClient();
     const body = await request.json();
-
-    // Verify user is admin
-    const cookieStore = await cookies();
-    const authCookie = cookieStore.get('sb-pajtampwqutuuidklxbv-auth-token');
-    
-    if (!authCookie) {
+    const user = await getServerUser(request);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Parse the auth cookie to get user info
-    let user;
-    try {
-      const authData = JSON.parse(authCookie.value);
-      user = authData.user;
-    } catch {
-      return NextResponse.json({ error: 'Invalid auth token' }, { status: 401 });
     }
 
     // Check if user is admin
@@ -90,23 +74,11 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceRoleClient();
     const body = await request.json();
-
-    // Verify user is admin
-    const cookieStore = await cookies();
-    const authCookie = cookieStore.get('sb-pajtampwqutuuidklxbv-auth-token');
-    
-    if (!authCookie) {
+    const user = await getServerUser(request);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    let user;
-    try {
-      const authData = JSON.parse(authCookie.value);
-      user = authData.user;
-    } catch {
-      return NextResponse.json({ error: 'Invalid auth token' }, { status: 401 });
     }
 
     // Check if user is admin

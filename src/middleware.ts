@@ -81,6 +81,8 @@ export async function middleware(request: NextRequest) {
                                 request.nextUrl.pathname.startsWith('/profile') ||
                                 request.nextUrl.pathname.startsWith('/bookings-sessions') ||
                                 request.nextUrl.pathname.startsWith('/dogs') ||
+                                request.nextUrl.pathname.startsWith('/dog-photos') ||
+                                request.nextUrl.pathname.startsWith('/daily-feedback') ||
                                 request.nextUrl.pathname.startsWith('/messages') ||
                                 request.nextUrl.pathname.startsWith('/trainer-availability');
         
@@ -108,7 +110,9 @@ export async function middleware(request: NextRequest) {
       
       // Redirect to login if accessing protected routes
       const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard') ||
-                              request.nextUrl.pathname.startsWith('/admin');
+                              request.nextUrl.pathname.startsWith('/admin') ||
+                              request.nextUrl.pathname.startsWith('/dog-photos') ||
+                              request.nextUrl.pathname.startsWith('/daily-feedback');
       
       if (isProtectedRoute) {
         const loginUrl = new URL('/login', request.url);

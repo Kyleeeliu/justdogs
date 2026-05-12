@@ -1,34 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { createServiceRoleClient } from '@/lib/supabase';
+import { getServerUser } from '@/lib/supabase/server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+type ExportOrderItem = {
+  quantity: number;
+  unit_price: number;
+  store_items: {
+    name: string;
+  };
+};
 
-async function getUserFromCookies() {
-  const cookieStore = await cookies();
-  const authCookie = cookieStore.get('sb-pajtampwqutuuidklxbv-auth-token');
-  
-  if (!authCookie) {
-    return null;
-  }
-
-  try {
-    const authData = JSON.parse(authCookie.value);
-    return authData.user;
-  } catch {
-    return null;
-  }
-}
+type ExportOrder = {
+  order_number: string;
+  status: string;
+  payment_method: string;
+  total_amount: number;
+  notes: string | null;
+  admin_notes: string | null;
+  collection_note: string | null;
+  created_at: string;
+  approved_at: string | null;
+  profiles: {
+    full_name: string;
+    email: string;
+  };
+  store_order_items: ExportOrderItem[];
+};
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getUserFromCookies();
+    const user = await getServerUser(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceRoleClient();
 
     // Check if user is admin
     const { data: profile } = await supabase
@@ -75,9 +81,9 @@ export async function GET(request: NextRequest) {
       'Approved Date'
     ];
 
-    const csvRows = orders.map((order: any) => {
+    const csvRows = (orders as ExportOrder[]).map((order) => {
       const items = order.store_order_items
-        .map((item: any) => `${item.store_items.name} (${item.quantity}x $${item.unit_price})`)
+        .map((item) => `${item.store_items.name} (${item.quantity}x $${item.unit_price})`)
         .join('; ');
 
       return [

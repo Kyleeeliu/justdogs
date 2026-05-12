@@ -5,7 +5,12 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { getNewsItems } from '@/lib/data/content';
-import type { NewsItem } from '@/lib/data/content';
+import type { NewsAttachment, NewsItem } from '@/lib/data/content';
+import {
+  facebookPagePluginSrc,
+  INSTAGRAM_PROFILE_URL,
+  type SocialPost,
+} from '@/lib/social/fetchSocialFeeds';
 import type { EventItem } from '@/lib/supabase/events';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -13,6 +18,7 @@ import {
   NewspaperIcon,
   CalendarIcon,
   MapPinIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline';
 
 export default function NewsPage() {
@@ -22,17 +28,28 @@ export default function NewsPage() {
   const [loading, setLoading] = useState(true);
   const [expandedNewsletters, setExpandedNewsletters] = useState<Set<string>>(new Set());
   const [previewingPdf, setPreviewingPdf] = useState<string | null>(null);
+  const [socialPosts, setSocialPosts] = useState<SocialPost[]>([]);
+  const [socialFeedError, setSocialFeedError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadContent = async () => {
       try {
-        const [allNews, allEvents] = await Promise.all([
+        const [allNews, allEvents, socialRes] = await Promise.all([
           getNewsItems(),
-          fetch('/api/events?published=true').then(r => r.ok ? r.json() : []).catch(() => [] as EventItem[]),
+          fetch('/api/events?published=true').then((r) => (r.ok ? r.json() : [])).catch(() => [] as EventItem[]),
+          fetch('/api/social-feed')
+            .then((r) => (r.ok ? r.json() : { posts: [], error: null }))
+            .catch(() => ({ posts: [], error: null })),
         ]);
         // Only show newsletters (type='news') in the News column
         setNewsletters(allNews.filter((item) => item.type === 'news'));
         setEvents(allEvents);
+        const s = socialRes as {
+          posts?: SocialPost[];
+          error?: string | null;
+        };
+        setSocialPosts(Array.isArray(s.posts) ? s.posts : []);
+        setSocialFeedError(typeof s.error === 'string' && s.error ? s.error : null);
       } catch (error) {
         console.error('Error loading news content:', error);
       } finally {
@@ -56,7 +73,11 @@ export default function NewsPage() {
   const toggleNewsletter = (id: string) => {
     setExpandedNewsletters((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -135,9 +156,121 @@ export default function NewsPage() {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-[rgb(0_32_96)] mb-3">News &amp; Events</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Stay updated with the latest newsletters and upcoming events from Just Dogs
+            Stay updated with the latest newsletters, social posts, and upcoming events from Just Dogs
           </p>
         </div>
+
+        {/* Facebook & Instagram */}
+        <section className="mb-14" aria-labelledby="social-heading">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">
+            <div className="w-1 h-7 bg-gradient-to-b from-blue-600 to-pink-500 rounded-full flex-shrink-0" />
+            <PhotoIcon className="h-5 w-5 text-[rgb(0_32_96)] hidden sm:block" />
+            <h2 id="social-heading" className="text-2xl font-bold text-[rgb(0_32_96)]">
+              Latest from Facebook &amp; Instagram
+            </h2>
+          </div>
+
+          {socialFeedError && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
+              Social feed could not be loaded from Meta ({socialFeedError}). The Facebook timeline below
+              may still show recent posts.
+            </p>
+          )}
+
+          {socialPosts.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-10">
+              {socialPosts.map((post) => (
+                <a
+                  key={post.id}
+                  href={post.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-lg hover:border-gray-300 transition-all flex flex-col"
+                >
+                  <div className="relative aspect-[4/3] bg-gray-100">
+                    {post.imageUrl ? (
+                      <img
+                        src={post.imageUrl}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                        <PhotoIcon className="h-12 w-12" />
+                      </div>
+                    )}
+                    <span
+                      className={`absolute top-2 left-2 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        post.source === 'facebook'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gradient-to-r from-purple-600 to-pink-500 text-white'
+                      }`}
+                    >
+                      {post.source === 'facebook' ? 'Facebook' : 'Instagram'}
+                    </span>
+                  </div>
+                  <div className="p-4 flex-1 flex flex-col">
+                    <time
+                      dateTime={post.publishedAt}
+                      className="text-xs text-gray-400 font-medium mb-1"
+                    >
+                      {formatDate(post.publishedAt)}
+                    </time>
+                    {post.text && (
+                      <p className="text-sm text-gray-700 line-clamp-4 group-hover:text-gray-900">
+                        {post.text}
+                      </p>
+                    )}
+                    <span className="mt-3 text-xs font-medium text-[rgb(0_32_96)] group-hover:underline">
+                      Open on {post.source === 'facebook' ? 'Facebook' : 'Instagram'} →
+                    </span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Facebook</h3>
+              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                <iframe
+                  title="Just Dogs on Facebook — recent posts"
+                  src={facebookPagePluginSrc(500, 680)}
+                  width="100%"
+                  height={680}
+                  style={{ border: 'none', overflow: 'hidden' }}
+                  scrolling="no"
+                  frameBorder={0}
+                  allow="encrypted-media"
+                  loading="lazy"
+                  className="w-full min-h-[400px] sm:min-h-[680px]"
+                />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Instagram</h3>
+              <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 rounded-2xl border border-pink-100 p-8 text-center shadow-sm min-h-[400px] sm:min-h-[680px] flex flex-col items-center justify-center">
+                <p className="text-gray-700 mb-2 font-medium">
+                  {socialPosts.some((p) => p.source === 'instagram')
+                    ? 'More photos and reels on our profile.'
+                    : 'Photos and reels live on our Instagram profile.'}
+                </p>
+                <p className="text-sm text-gray-500 mb-6 max-w-sm">
+                  Follow @justdogsbehaviour for reels, stories, and day-to-day moments.
+                </p>
+                <Button
+                  size="lg"
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl"
+                  onClick={() => window.open(INSTAGRAM_PROFILE_URL, '_blank')}
+                >
+                  Open Instagram @justdogsbehaviour
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Two-Column Layout: Newsletters left, Events right */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -162,7 +295,7 @@ export default function NewsPage() {
                   const isExpanded = expandedNewsletters.has(item.id);
                   const hasPdf =
                     item.attachments &&
-                    item.attachments.some((a: any) => a.type === 'pdf');
+                    item.attachments.some((a: NewsAttachment) => a.type === 'pdf');
 
                   return (
                     <Card
@@ -232,7 +365,7 @@ export default function NewsPage() {
                         >
                           {item.attachments && item.attachments.length > 0 ? (
                             <div className="px-5 pb-5 border-t border-gray-100 pt-4 space-y-3">
-                              {item.attachments.map((attachment: any, idx: number) => (
+                              {item.attachments.map((attachment: NewsAttachment, idx: number) => (
                                 <div key={idx}>
                                   {attachment.type === 'pdf' ? (
                                     <div>

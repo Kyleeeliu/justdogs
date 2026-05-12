@@ -3,12 +3,23 @@ import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import { AuthErrorBoundary } from "@/components/AuthErrorBoundary";
 import { AuthErrorHandler } from "@/components/AuthErrorHandler";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
   title: "Just Dogs Training App",
   description: "Comprehensive dog training management for trainers, parents, and administrators",
   keywords: "dog training, pet care, Cape Town, South Africa, Just Dogs",
   authors: [{ name: "Just Dogs" }],
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Just Dogs",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [{ url: "/images/icons/logo.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/images/icons/logo.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport = {
@@ -58,6 +69,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="/fonts/" />
       </head>
       <body className="min-h-screen bg-gray-50 text-base leading-relaxed">
+        <ServiceWorkerRegister />
         <AuthErrorHandler />
         <AuthErrorBoundary>
           <AuthProvider>

@@ -162,6 +162,20 @@ export interface FarmPhotoWithDogs extends FarmPhoto {
   dogs: Array<{ id: string; name: string }>;
 }
 
+/** General dog photos (not tied to a booking); tagged via dog_photo_dogs */
+export interface DogPhoto {
+  id: string;
+  uploaded_by: string;
+  photo_url: string;
+  caption?: string | null;
+  photo_date: string;
+  created_at: string;
+  updated_at: string;
+  dog_ids?: string[];
+  dog_names?: string[];
+  uploader_name?: string;
+}
+
 export interface ConversationParticipant {
   id: string;
   conversation_id: string;

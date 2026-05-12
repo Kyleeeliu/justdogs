@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { AddToHomeScreenPrompt } from '@/components/AddToHomeScreenPrompt';
 
 import {
   HomeIcon,
@@ -18,6 +19,8 @@ import {
   ArrowRightOnRectangleIcon,
   NewspaperIcon,
   CogIcon,
+  PhotoIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -28,6 +31,20 @@ const navigation = [
   { name: 'News & Events', href: '/news', icon: NewspaperIcon, mobileLabel: 'News' },
   { name: 'Profile', href: '/profile', icon: UserIcon, mobileLabel: 'Profile' },
 ];
+
+const staffDogPhotosNav = {
+  name: 'Dog photos',
+  href: '/dog-photos',
+  icon: PhotoIcon,
+  mobileLabel: 'Photos',
+};
+
+const dailyFeedbackNav = {
+  name: 'Daily feedback',
+  href: '/daily-feedback',
+  icon: ChatBubbleLeftRightIcon,
+  mobileLabel: 'Feedback',
+};
 
 const adminNavigation = [
   { name: 'Content Management', href: '/admin/content-management', icon: CogIcon, mobileLabel: 'Admin' },
@@ -92,8 +109,14 @@ export default function DashboardLayout({
     );
   }
 
+  const mainNav =
+    user.role === 'admin' || user.role === 'trainer'
+      ? [...navigation, staffDogPhotosNav, dailyFeedbackNav]
+      : navigation;
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <AddToHomeScreenPrompt />
       {/* Mobile sidebar */}
       <div className={`fixed inset-0 z-50 lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}>
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
@@ -118,7 +141,7 @@ export default function DashboardLayout({
             </Button>
           </div>
           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-            {navigation.map((item) => {
+            {mainNav.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link
@@ -208,7 +231,7 @@ export default function DashboardLayout({
             </Link>
           </div>
           <nav className="flex-1 space-y-1 px-2 py-4">
-            {navigation.map((item) => {
+            {mainNav.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link
@@ -308,7 +331,7 @@ export default function DashboardLayout({
         {/* Mobile bottom navigation - compact so all 6 items fit on small screens */}
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 lg:hidden safe-area-pb">
           <nav className="flex">
-            {navigation.map((item) => {
+            {mainNav.map((item) => {
               const isActive = pathname === item.href;
               const label = (item as { mobileLabel?: string }).mobileLabel ?? item.name;
               return (
