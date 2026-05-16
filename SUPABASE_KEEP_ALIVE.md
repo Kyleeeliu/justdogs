@@ -12,7 +12,7 @@ This project includes an automated system to prevent the Supabase free tier data
 
 ### 2. Automated Scheduling
 - **Platform**: Vercel Cron Jobs
-- **Schedule**: Every 6 hours (`0 */6 * * *`)
+- **Schedule**: Once a week (`0 0 * * 0`)
 - **Configuration**: Defined in `vercel.json`
 
 ### 3. Environment Variables
@@ -66,8 +66,8 @@ curl -X GET "https://your-domain.vercel.app/api/keep-alive"
 
 ## Schedule Details
 
-- **Frequency**: Every 6 hours
-- **Times**: 00:00, 06:00, 12:00, 18:00 UTC
+- **Frequency**: Once a week
+- **Time**: Every Sunday at 00:00 UTC
 - **Purpose**: Ensures database activity well within the 7-day inactivity limit
 
 ## Security Features
