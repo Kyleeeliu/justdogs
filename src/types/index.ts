@@ -39,14 +39,27 @@ export interface Dog {
 
 export type BookingStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
 export type SessionStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
-export type BookingType = 'pet_care' | 'dog_sitting' | 'dog_training' | 'private_training' | 'consult';
+export type BookingType = 'pet_care' | 'dog_sitting' | 'dog_training' | 'private_training' | 'consult' | 'farm';
 export type TrainingLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
 export type ConsultType = 'behavioral' | 'training' | 'general';
+
+export interface FarmDay {
+  id: string;
+  date: string; // YYYY-MM-DD
+  trainer_id: string | null;
+  trainer_name?: string | null;
+  max_capacity?: number | null;
+  notes?: string | null;
+  total_bookings?: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Booking {
   id: string;
   dog_id: string;
-  trainer_id: string;
+  trainer_id: string | null;
+  farm_day_id?: string | null;
   parent_id: string;
   booking_type: BookingType;
   training_level?: TrainingLevel; // For dog training bookings

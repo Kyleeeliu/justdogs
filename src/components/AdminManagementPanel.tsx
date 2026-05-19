@@ -54,6 +54,9 @@ interface Booking {
   parent_name: string;
   trainer_id: string | null;
   trainer_name: string | null;
+  farm_day_id: string | null;
+  farm_day_date: string | null;
+  farm_day_trainer: string | null;
   booking_type: string;
   start_time: string;
   end_time: string | null;
@@ -61,6 +64,23 @@ interface Booking {
   location: string | null;
   created_at: string;
   status: string;
+}
+
+interface FarmDay {
+  id: string;
+  date: string;
+  trainer_id: string | null;
+  trainer_name: string | null;
+  max_capacity: number | null;
+  notes: string | null;
+  total_bookings: number;
+}
+
+interface FarmDayFormState {
+  date: string;
+  trainer_id: string;
+  max_capacity: string;
+  notes: string;
 }
 
 interface Trainer {
@@ -96,19 +116,17 @@ interface BookingEditState {
   location: string;
   status: string;
   trainer_id: string;
+  farm_day_id: string | null;
 }
 
 interface BookingCreateState {
   dog_id: string;
-  trainer_id: string;
+  farm_day_id: string;
   booking_type: string;
-  start_time: string;
-  end_time: string;
   notes: string;
-  location: string;
 }
 
-type TabType = 'bookings' | 'trainers' | 'newsletters' | 'events';
+type TabType = 'bookings' | 'farm-days' | 'trainers' | 'newsletters' | 'events';
 type BookingFilter = 'all' | 'pending' | 'confirmed' | 'cancelled' | 'completed';
 type TrainerFilter = 'all' | 'pending' | 'current' | 'deactivated';
 
@@ -130,9 +148,6 @@ function formatDate(iso: string): string {
   });
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Johannesburg' });
-}
 
 function statusBadge(status: string) {
   const s = BOOKING_STATUSES.find((b) => b.value === status);
@@ -157,14 +172,19 @@ export function AdminManagementPanel() {
   const [dbBookingTypes, setDbBookingTypes] = useState<DbBookingType[]>([]);
   const emptyCreate: BookingCreateState = {
     dog_id: '',
-    trainer_id: '',
+    farm_day_id: '',
     booking_type: '',
-    start_time: '',
-    end_time: '',
     notes: '',
-    location: '',
   };
   const [createForm, setCreateForm] = useState<BookingCreateState>(emptyCreate);
+
+  // ── Farm Days ──
+  const [farmDays, setFarmDays] = useState<FarmDay[]>([]);
+  const [showCreateFarmDay, setShowCreateFarmDay] = useState(false);
+  const [editingFarmDay, setEditingFarmDay] = useState<FarmDay | null>(null);
+  const emptyFarmDayForm: FarmDayFormState = { date: '', trainer_id: '', max_capacity: '', notes: '' };
+  const [farmDayForm, setFarmDayForm] = useState<FarmDayFormState>(emptyFarmDayForm);
+  const [farmDayFormError, setFarmDayFormError] = useState<string | null>(null);
 
   // ── Trainers ──
   const [allTrainers, setAllTrainers] = useState<Trainer[]>([]);
@@ -241,6 +261,9 @@ export function AdminManagementPanel() {
           parent_name: b.parents?.full_name || b.parent?.full_name || 'Unknown Owner',
           trainer_id: b.trainer_id ?? null,
           trainer_name: b.trainers?.full_name || null,
+          farm_day_id: b.farm_day_id ?? null,
+          farm_day_date: b.farm_day?.date ?? null,
+          farm_day_trainer: b.farm_day?.farm_day_trainer?.full_name ?? null,
           booking_type: b.booking_type,
           start_time: b.start_time,
           end_time: b.end_time ?? null,
@@ -250,6 +273,17 @@ export function AdminManagementPanel() {
           status: b.status,
         }));
         setAllBookings(bookings);
+      }
+
+      // ── Farm Days ──
+      try {
+        const fdRes = await authenticatedGet('/api/farm-days');
+        if (fdRes.ok) {
+          const fdData = await fdRes.json();
+          setFarmDays(Array.isArray(fdData) ? fdData : []);
+        }
+      } catch {
+        setFarmDays([]);
       }
 
       // ── Dogs (for create booking) ──
@@ -322,6 +356,7 @@ export function AdminManagementPanel() {
       location: b.location || '',
       status: b.status,
       trainer_id: b.trainer_id || '',
+      farm_day_id: b.farm_day_id,
     });
   };
 
@@ -376,19 +411,20 @@ export function AdminManagementPanel() {
 
   const handleCreateBooking = async () => {
     setBookingFormError(null);
-    if (!createForm.dog_id || !createForm.booking_type || !createForm.start_time) {
-      setBookingFormError('Dog, service type, and start date/time are required.');
+    if (!createForm.dog_id || !createForm.booking_type || !createForm.farm_day_id) {
+      setBookingFormError('Dog, service type, and farm day are required.');
       return;
     }
     try {
+      const farmDay = farmDays.find(fd => fd.id === createForm.farm_day_id);
       const payload: any = {
         dog_id: createForm.dog_id,
         booking_type: createForm.booking_type,
-        start_time: new Date(createForm.start_time).toISOString(),
-        end_time: createForm.end_time ? new Date(createForm.end_time).toISOString() : null,
+        farm_day_id: createForm.farm_day_id,
+        start_time: farmDay ? `${farmDay.date}T00:00:00` : new Date().toISOString(),
         notes: createForm.notes || null,
-        location: createForm.location || null,
-        trainer_id: createForm.trainer_id || null,
+        duration_type: 'days',
+        duration_days: 1,
       };
       const res = await authenticatedFetch('/api/bookings', {
         method: 'POST',
@@ -403,6 +439,79 @@ export function AdminManagementPanel() {
       await loadData();
     } catch (error: any) {
       setBookingFormError(error.message || 'Failed to create booking');
+    }
+  };
+
+  // ─── Farm Day Handlers ────────────────────────────────────────────────────
+
+  const openCreateFarmDay = () => {
+    setFarmDayFormError(null);
+    setEditingFarmDay(null);
+    setFarmDayForm(emptyFarmDayForm);
+    setShowCreateFarmDay(true);
+  };
+
+  const openEditFarmDay = (fd: FarmDay) => {
+    setFarmDayFormError(null);
+    setEditingFarmDay(fd);
+    setFarmDayForm({
+      date: fd.date,
+      trainer_id: fd.trainer_id || '',
+      max_capacity: fd.max_capacity !== null ? String(fd.max_capacity) : '',
+      notes: fd.notes || '',
+    });
+    setShowCreateFarmDay(true);
+  };
+
+  const handleSaveFarmDay = async () => {
+    setFarmDayFormError(null);
+    if (!farmDayForm.date) {
+      setFarmDayFormError('Date is required.');
+      return;
+    }
+    try {
+      const payload = {
+        date: farmDayForm.date,
+        trainer_id: farmDayForm.trainer_id || null,
+        max_capacity: farmDayForm.max_capacity || null,
+        notes: farmDayForm.notes || null,
+      };
+      let res: Response;
+      if (editingFarmDay) {
+        res = await authenticatedFetch('/api/farm-days', {
+          method: 'PUT',
+          body: JSON.stringify({ id: editingFarmDay.id, ...payload }),
+        });
+      } else {
+        res = await authenticatedFetch('/api/farm-days', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || 'Failed to save farm day');
+      }
+      setShowCreateFarmDay(false);
+      setEditingFarmDay(null);
+      setFarmDayForm(emptyFarmDayForm);
+      await loadData();
+    } catch (error: any) {
+      setFarmDayFormError(error.message || 'Failed to save farm day');
+    }
+  };
+
+  const handleDeleteFarmDay = async (id: string) => {
+    if (!confirm('Delete this farm day? Existing bookings linked to it will lose their farm day association.')) return;
+    try {
+      const res = await authenticatedFetch(`/api/farm-days?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || 'Failed to delete farm day');
+      }
+      await loadData();
+    } catch (error: any) {
+      alert(error.message || 'Failed to delete farm day.');
     }
   };
 
@@ -687,6 +796,11 @@ export function AdminManagementPanel() {
       icon: <CalendarIcon className="h-4 w-4" />,
     },
     {
+      id: 'farm-days',
+      label: 'Farm Days',
+      icon: <CalendarIcon className="h-4 w-4" />,
+    },
+    {
       id: 'trainers',
       label: 'Trainers',
       count: pendingTrainerCount || undefined,
@@ -814,14 +928,28 @@ export function AdminManagementPanel() {
                       <p className="text-sm text-gray-600">
                         {BOOKING_CATEGORIES.find((t) => t.value === booking.booking_type)?.label ||
                           booking.booking_type.replace(/_/g, ' ')}{' '}
-                        · {formatDate(booking.start_time)} at {formatTime(booking.start_time)}
+                        · {formatDate(booking.start_time)}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        Trainer:{' '}
-                        <span className={booking.trainer_name ? 'text-gray-700 font-medium' : 'text-red-500'}>
-                          {booking.trainer_name || 'Unassigned'}
-                        </span>
-                      </p>
+                      {booking.farm_day_id ? (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Farm Day:{' '}
+                          <span className="text-gray-700 font-medium">
+                            {booking.farm_day_date
+                              ? new Date(booking.farm_day_date + 'T00:00:00').toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' })
+                              : 'Unknown'}
+                          </span>
+                          {booking.farm_day_trainer && (
+                            <span className="text-gray-500"> · {booking.farm_day_trainer}</span>
+                          )}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Trainer:{' '}
+                          <span className={booking.trainer_name ? 'text-gray-700 font-medium' : 'text-red-500'}>
+                            {booking.trainer_name || 'Unassigned'}
+                          </span>
+                        </p>
+                      )}
                       {booking.location && (
                         <p className="text-xs text-gray-500 mt-0.5">
                           📍 {booking.location}
@@ -829,15 +957,17 @@ export function AdminManagementPanel() {
                       )}
                     </div>
                     <div className="flex gap-1.5 flex-shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs px-2.5"
-                        onClick={() => setAssigningBookingId(booking.id)}
-                        title="Assign trainer"
-                      >
-                        <UserGroupIcon className="h-4 w-4" />
-                      </Button>
+                      {!booking.farm_day_id && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs px-2.5"
+                          onClick={() => setAssigningBookingId(booking.id)}
+                          title="Assign trainer"
+                        >
+                          <UserGroupIcon className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -852,6 +982,78 @@ export function AdminManagementPanel() {
                         className="text-red-600 border-red-200 hover:bg-red-50"
                         onClick={() => handleDeleteBooking(booking.id)}
                         title="Delete booking"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════════ FARM DAYS TAB ═══════════════ */}
+        {activeTab === 'farm-days' && (
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              <p className="text-sm text-gray-500">
+                Create farm day slots that parents can book into. Each day is assigned to one trainer.
+              </p>
+              <Button
+                size="sm"
+                className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] flex-shrink-0"
+                onClick={openCreateFarmDay}
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                New Farm Day
+              </Button>
+            </div>
+
+            {farmDays.length === 0 ? (
+              <div className="text-center py-14 text-gray-400">
+                <CalendarIcon className="h-14 w-14 mx-auto mb-3 text-gray-200" />
+                <p className="font-semibold text-gray-500">No farm days yet</p>
+                <p className="text-sm mt-1">Create a farm day so parents can book farm stays</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {farmDays.map((fd) => (
+                  <div
+                    key={fd.id}
+                    className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl gap-3 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                        <span className="font-semibold text-gray-900">
+                          {new Date(fd.date + 'T00:00:00').toLocaleDateString('en-ZA', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </span>
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                          {fd.total_bookings}{fd.max_capacity ? `/${fd.max_capacity}` : ''} booked
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Trainer:{' '}
+                        <span className={fd.trainer_name ? 'font-medium text-gray-800' : 'text-amber-600'}>
+                          {fd.trainer_name || 'Unassigned'}
+                        </span>
+                      </p>
+                      {fd.notes && <p className="text-xs text-gray-400 mt-0.5">{fd.notes}</p>}
+                    </div>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <Button size="sm" variant="outline" onClick={() => openEditFarmDay(fd)}>
+                        <PencilIcon className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => handleDeleteFarmDay(fd.id)}
                       >
                         <TrashIcon className="h-4 w-4" />
                       </Button>
@@ -1325,19 +1527,25 @@ export function AdminManagementPanel() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Trainer</label>
-                <select
-                  value={editingBooking.trainer_id}
-                  onChange={(e) => setEditingBooking({ ...editingBooking, trainer_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
-                >
-                  <option value="">Unassigned</option>
-                  {approvedTrainers.map((t) => (
-                    <option key={t.id} value={t.id}>{t.full_name}</option>
-                  ))}
-                </select>
-              </div>
+              {editingBooking.farm_day_id ? (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  Trainer is managed via the Farm Day. Edit the farm day in the Farm Days tab to change the trainer.
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Trainer</label>
+                  <select
+                    value={editingBooking.trainer_id}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, trainer_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                  >
+                    <option value="">Unassigned</option>
+                    {approvedTrainers.map((t) => (
+                      <option key={t.id} value={t.id}>{t.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {(editingBooking.booking_type === 'behavior_and_home' || editingBooking.booking_type === 'service_and_emotional_support') && (
                 <div>
@@ -1460,55 +1668,32 @@ export function AdminManagementPanel() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Start Date & Time <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    value={createForm.start_time}
-                    onChange={(e) => setCreateForm({ ...createForm, start_time: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    End Date & Time <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    value={createForm.end_time}
-                    onChange={(e) => setCreateForm({ ...createForm, end_time: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {(createForm.booking_type === 'behavior_and_home' || createForm.booking_type === 'service_and_emotional_support') && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Session Address <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    value={createForm.location}
-                    onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })}
-                    placeholder="Enter the home/session address"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">The trainer will visit this address.</p>
-                </div>
-              )}
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Trainer</label>
-                <select
-                  value={createForm.trainer_id}
-                  onChange={(e) => setCreateForm({ ...createForm, trainer_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
-                >
-                  <option value="">Assign later</option>
-                  {approvedTrainers.map((t) => (
-                    <option key={t.id} value={t.id}>{t.full_name}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Farm Day <span className="text-red-500">*</span>
+                </label>
+                {farmDays.length === 0 ? (
+                  <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    No farm days exist. Create one in the Farm Days tab first.
+                  </p>
+                ) : (
+                  <select
+                    value={createForm.farm_day_id}
+                    onChange={(e) => setCreateForm({ ...createForm, farm_day_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                  >
+                    <option value="">Select a farm day…</option>
+                    {farmDays.map((fd) => (
+                      <option key={fd.id} value={fd.id}>
+                        {new Date(fd.date + 'T00:00:00').toLocaleDateString('en-ZA', {
+                          weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+                        })}
+                        {fd.trainer_name ? ` · ${fd.trainer_name}` : ''}
+                        {fd.max_capacity ? ` (${fd.total_bookings}/${fd.max_capacity})` : ` (${fd.total_bookings} booked)`}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>
@@ -1540,6 +1725,89 @@ export function AdminManagementPanel() {
                 className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
               >
                 Create Booking
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL: CREATE / EDIT FARM DAY ═══════════════ */}
+      {showCreateFarmDay && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-5">
+              {editingFarmDay ? 'Edit Farm Day' : 'New Farm Day'}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Date <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={farmDayForm.date}
+                  onChange={(e) => setFarmDayForm({ ...farmDayForm, date: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Assigned Trainer <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <select
+                  value={farmDayForm.trainer_id}
+                  onChange={(e) => setFarmDayForm({ ...farmDayForm, trainer_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm"
+                >
+                  <option value="">Unassigned</option>
+                  {approvedTrainers.map((t) => (
+                    <option key={t.id} value={t.id}>{t.full_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Max Capacity <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={farmDayForm.max_capacity}
+                  onChange={(e) => setFarmDayForm({ ...farmDayForm, max_capacity: e.target.value })}
+                  placeholder="Leave blank for unlimited"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+                <textarea
+                  value={farmDayForm.notes}
+                  onChange={(e) => setFarmDayForm({ ...farmDayForm, notes: e.target.value })}
+                  rows={2}
+                  placeholder="Internal notes about this farm day…"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)] text-sm resize-none"
+                />
+              </div>
+
+              {farmDayFormError && (
+                <p className="text-sm text-red-600">{farmDayFormError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => { setShowCreateFarmDay(false); setEditingFarmDay(null); setFarmDayFormError(null); }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveFarmDay}
+                className="flex-1 bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)]"
+              >
+                {editingFarmDay ? 'Save Changes' : 'Create Farm Day'}
               </Button>
             </div>
           </div>

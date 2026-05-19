@@ -47,7 +47,8 @@ export async function GET(request: NextRequest) {
     *,
     dogs(name, breed),
     trainers:trainer_id(full_name),
-    parents:parent_id(full_name)
+    parents:parent_id(full_name),
+    farm_day:farm_day_id(id, date, trainer_id, farm_day_trainer:trainer_id(full_name))
   `);
 
   if (user.role === 'parent') {
@@ -77,12 +78,18 @@ export async function POST(request: NextRequest) {
 
     // Determine IDs: Admin can override, others are locked to their own ID
     const parentId = user.role === 'admin' ? (body.parent_id || user.id) : user.id;
-    const status = (user.role === 'admin' && body.trainer_id) ? 'confirmed' : 'pending';
+
+    // Farm bookings link to a farm_day (trainer lives on the farm_day, not the booking)
+    const isFarmBooking = !!body.farm_day_id;
+    const status = isFarmBooking
+      ? 'confirmed'
+      : (user.role === 'admin' && body.trainer_id) ? 'confirmed' : 'pending';
 
     const baseBookingData = {
       dog_id: body.dog_id,
       parent_id: parentId,
-      trainer_id: body.trainer_id || null,
+      trainer_id: isFarmBooking ? null : (body.trainer_id || null),
+      farm_day_id: body.farm_day_id || null,
       booking_type: body.booking_type || 'boarding',
       start_time: body.start_time,
       end_time: body.end_time || body.start_time,

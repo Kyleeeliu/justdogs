@@ -127,9 +127,6 @@ export function AddToHomeScreenPrompt() {
               <h2 id="pwa-prompt-title" className="text-lg font-semibold text-gray-900 leading-tight">
                 Add to home screen
               </h2>
-              <p className="text-sm text-gray-600 mt-0.5">
-                Open Just Dogs like an app with the Jasper logo on your home screen.
-              </p>
             </div>
           </div>
           <button
@@ -142,30 +139,8 @@ export function AddToHomeScreenPrompt() {
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
-          {showAndroidInstall && (
-            <p className="text-sm text-gray-700">
-              Your browser can install this app. Tap <strong>Install</strong> to add it — you won&apos;t see this again
-              after it&apos;s installed.
-            </p>
-          )}
-
-          {showIOS && (
-            <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
-              <li>Tap the <strong>Share</strong> button in Safari (square with arrow).</li>
-              <li>Scroll and tap <strong>Add to Home Screen</strong>.</li>
-              <li>Tap <strong>Add</strong> — the Jasper logo will appear on your home screen.</li>
-            </ol>
-          )}
-
-          {!showAndroidInstall && !showIOS && (
-            <p className="text-sm text-gray-700">
-              Use your browser menu to <strong>Add to Home screen</strong> or <strong>Install app</strong>. This
-              reminder won&apos;t show again after you close it.
-            </p>
-          )}
-
-          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end pt-1">
+        <div className="p-4">
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
             <Button type="button" variant="outline" onClick={() => markDone('dismissed')} className="w-full sm:w-auto">
               Not now
             </Button>
@@ -175,17 +150,17 @@ export function AddToHomeScreenPrompt() {
                 onClick={() => void handleInstall()}
                 className="w-full sm:w-auto bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
               >
-                Install
+                Add to home screen
               </Button>
-            ) : showIOS ? (
+            ) : (
               <Button
                 type="button"
                 onClick={() => markDone('installed')}
                 className="w-full sm:w-auto bg-[rgb(0_32_96)] hover:bg-[rgb(0_24_72)] text-white"
               >
-                Done — I added it
+                Add to home screen
               </Button>
-            ) : null}
+            )}
           </div>
         </div>
       </div>
