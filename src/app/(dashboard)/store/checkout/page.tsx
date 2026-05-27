@@ -30,6 +30,12 @@ interface CartItem {
   item: StoreItem;
 }
 
+const formatZAR = (amount: number) =>
+  new Intl.NumberFormat('en-ZA', {
+    style: 'currency',
+    currency: 'ZAR',
+  }).format(amount);
+
 export default function CheckoutPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -167,12 +173,12 @@ export default function CheckoutPage() {
                   
                   <div className="flex-1">
                     <h3 className="font-medium">{cartItem.item.name}</h3>
-                    <p className="text-sm text-gray-600">${cartItem.item.price.toFixed(2)} each</p>
+                    <p className="text-sm text-gray-600">{formatZAR(cartItem.item.price)} each</p>
                     <p className="text-sm text-gray-500">Quantity: {cartItem.quantity}</p>
                   </div>
                   
                   <div className="text-right">
-                    <p className="font-semibold">${(cartItem.item.price * cartItem.quantity).toFixed(2)}</p>
+                    <p className="font-semibold">{formatZAR(cartItem.item.price * cartItem.quantity)}</p>
                   </div>
                 </div>
               ))}
@@ -237,7 +243,7 @@ export default function CheckoutPage() {
             <div className="space-y-3">
               <div className="flex justify-between text-lg">
                 <span>Subtotal:</span>
-                <span>${total.toFixed(2)}</span>
+                <span>{formatZAR(total)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Tax:</span>
@@ -246,7 +252,7 @@ export default function CheckoutPage() {
               <div className="border-t pt-3">
                 <div className="flex justify-between text-xl font-bold">
                   <span>Total:</span>
-                  <span className="text-[rgb(0_32_96)]">${total.toFixed(2)}</span>
+                  <span className="text-[rgb(0_32_96)]">{formatZAR(total)}</span>
                 </div>
               </div>
             </div>

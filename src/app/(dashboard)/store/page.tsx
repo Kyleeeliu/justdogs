@@ -5,6 +5,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+  authenticatedDelete,
+  authenticatedGet,
+  authenticatedPost,
+  authenticatedPut,
+} from '@/lib/api/apiClient';
 import { 
   ShoppingCartIcon, 
   PlusIcon, 
@@ -30,6 +36,12 @@ interface CartItem {
   quantity: number;
   item: StoreItem;
 }
+
+const formatZAR = (amount: number) =>
+  new Intl.NumberFormat('en-ZA', {
+    style: 'currency',
+    currency: 'ZAR',
+  }).format(amount);
 
 export default function StorePage() {
   const { user } = useAuth();
@@ -62,7 +74,7 @@ export default function StorePage() {
 
   const loadCart = async () => {
     try {
-      const response = await fetch('/api/store/cart');
+      const response = await authenticatedGet('/api/store/cart');
       if (response.ok) {
         const data = await response.json();
         setCart(data);
@@ -74,10 +86,9 @@ export default function StorePage() {
 
   const addToCart = async (itemId: string) => {
     try {
-      const response = await fetch('/api/store/cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_item_id: itemId, quantity: 1 })
+      const response = await authenticatedPost('/api/store/cart', {
+        store_item_id: itemId,
+        quantity: 1,
       });
       
       if (response.ok) {
@@ -95,10 +106,9 @@ export default function StorePage() {
     }
 
     try {
-      const response = await fetch('/api/store/cart', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_item_id: itemId, quantity })
+      const response = await authenticatedPut('/api/store/cart', {
+        store_item_id: itemId,
+        quantity,
       });
       
       if (response.ok) {
@@ -111,9 +121,7 @@ export default function StorePage() {
 
   const removeFromCart = async (itemId: string) => {
     try {
-      const response = await fetch(`/api/store/cart?item_id=${itemId}`, {
-        method: 'DELETE'
-      });
+      const response = await authenticatedDelete(`/api/store/cart?item_id=${itemId}`);
       
       if (response.ok) {
         loadCart();
@@ -221,7 +229,7 @@ export default function StorePage() {
                 <div key={cartItem.store_item_id} className="flex items-center justify-between">
                   <div className="flex-1">
                     <h4 className="font-medium">{cartItem.item.name}</h4>
-                    <p className="text-sm text-gray-600">${cartItem.item.price.toFixed(2)} each</p>
+                    <p className="text-sm text-gray-600">{formatZAR(cartItem.item.price)} each</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -245,7 +253,7 @@ export default function StorePage() {
               
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center mb-4">
-                  <span className="font-semibold">Total: ${cartTotal.toFixed(2)}</span>
+                  <span className="font-semibold">Total: {formatZAR(cartTotal)}</span>
                 </div>
                 <Button 
                   className="w-full bg-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)]/90"
@@ -321,7 +329,7 @@ export default function StorePage() {
 
                   <div className="flex items-center justify-between">
                     <span className="text-lg font-bold text-[rgb(0_32_96)]">
-                      ${item.price.toFixed(2)}
+                      {formatZAR(item.price)}
                     </span>
                     
                     {cartQuantity > 0 ? (

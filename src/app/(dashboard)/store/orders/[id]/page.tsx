@@ -36,6 +36,12 @@ interface Order {
   store_order_items: OrderItem[];
 }
 
+const formatZAR = (amount: number) =>
+  new Intl.NumberFormat('en-ZA', {
+    style: 'currency',
+    currency: 'ZAR',
+  }).format(amount);
+
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -173,12 +179,12 @@ export default function OrderDetailsPage() {
                     <div>
                       <h4 className="font-medium">{item.store_items.name}</h4>
                       <p className="text-sm text-gray-600">
-                        ${item.unit_price.toFixed(2)} × {item.quantity}
+                        {formatZAR(item.unit_price)} × {item.quantity}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold">${item.total_price.toFixed(2)}</p>
+                    <p className="font-semibold">{formatZAR(item.total_price)}</p>
                   </div>
                 </div>
               ))}
@@ -220,7 +226,7 @@ export default function OrderDetailsPage() {
               <div className="border-t pt-3">
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total:</span>
-                  <span className="text-[rgb(0_32_96)]">${order.total_amount.toFixed(2)}</span>
+                  <span className="text-[rgb(0_32_96)]">{formatZAR(order.total_amount)}</span>
                 </div>
               </div>
             </div>

@@ -54,6 +54,12 @@ interface Order {
   }>;
 }
 
+const formatZAR = (amount: number) =>
+  new Intl.NumberFormat('en-ZA', {
+    style: 'currency',
+    currency: 'ZAR',
+  }).format(amount);
+
 export default function StoreManagementPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'items' | 'orders'>('items');
@@ -350,7 +356,7 @@ export default function StoreManagementPage() {
                 
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-lg font-bold text-[rgb(0_32_96)]">
-                    ${item.price.toFixed(2)}
+                    {formatZAR(item.price)}
                   </span>
                   <span className="text-sm text-gray-600">
                     Stock: {item.stock_quantity}
@@ -400,7 +406,7 @@ export default function StoreManagementPage() {
                   </p>
                   
                   <p className="font-semibold text-[rgb(0_32_96)]">
-                    Total: ${order.total_amount.toFixed(2)}
+                    Total: {formatZAR(order.total_amount)}
                   </p>
                   
                   {order.notes && (
@@ -455,7 +461,7 @@ export default function StoreManagementPage() {
                 placeholder="Description"
                 value={itemForm.description}
                 onChange={(e) => setItemForm({...itemForm, description: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded-md"
+                className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[rgb(0_32_96)]"
                 rows={3}
               />
               
@@ -550,7 +556,7 @@ export default function StoreManagementPage() {
                 <strong>Payment Method:</strong> {selectedOrder.payment_method}
               </div>
               <div>
-                <strong>Total:</strong> ${selectedOrder.total_amount.toFixed(2)}
+                <strong>Total:</strong> {formatZAR(selectedOrder.total_amount)}
               </div>
               
               {selectedOrder.notes && (
@@ -571,7 +577,7 @@ export default function StoreManagementPage() {
                   {selectedOrder.store_order_items.map((item, index) => (
                     <li key={index} className="flex justify-between">
                       <span>{item.store_items.name} x {item.quantity}</span>
-                      <span>${item.total_price.toFixed(2)}</span>
+                      <span>{formatZAR(item.total_price)}</span>
                     </li>
                   ))}
                 </ul>

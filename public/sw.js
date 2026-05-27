@@ -8,5 +8,18 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+  // Keep this SW minimal and avoid unhandled promise rejections in dev.
+  if (event.request.method !== 'GET') return;
+
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      // If network fetch fails (common during local dev restarts), return 503
+      // instead of throwing an unhandled rejection in the service worker.
+      return new Response('Service unavailable', {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    })
+  );
 });

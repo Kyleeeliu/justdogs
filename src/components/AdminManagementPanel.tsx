@@ -91,6 +91,14 @@ interface Trainer {
   approval_status: string | null;
 }
 
+interface ParentUser {
+  id: string;
+  full_name: string;
+  email: string;
+  created_at: string;
+  verification_status: string | null;
+}
+
 interface NewsletterFormState {
   title: string;
   content: string;
@@ -126,9 +134,10 @@ interface BookingCreateState {
   notes: string;
 }
 
-type TabType = 'bookings' | 'farm-days' | 'trainers' | 'newsletters' | 'events';
+type TabType = 'bookings' | 'farm-days' | 'trainers' | 'parents' | 'newsletters' | 'events';
 type BookingFilter = 'all' | 'pending' | 'confirmed' | 'cancelled' | 'completed';
 type TrainerFilter = 'all' | 'pending' | 'current' | 'deactivated';
+type ParentFilter = 'all' | 'pending' | 'verified' | 'rejected';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -198,6 +207,10 @@ export function AdminManagementPanel() {
   });
   const [createTrainerError, setCreateTrainerError] = useState<string | null>(null);
 
+  // ── Parents ──
+  const [allParents, setAllParents] = useState<ParentUser[]>([]);
+  const [parentFilter, setParentFilter] = useState<ParentFilter>('pending');
+
   // ── Newsletters ──
   const [newsletters, setNewsletters] = useState<NewsItem[]>([]);
   const [showNewsletterModal, setShowNewsletterModal] = useState(false);
@@ -247,6 +260,20 @@ export function AdminManagementPanel() {
         setApprovedTrainers(
           trainers.filter((t) => !t.approval_status || t.approval_status === 'approved')
         );
+      }
+
+      // ── Parents (all) ──
+      const parentRes = await authenticatedGet('/api/users?role=parent');
+      if (parentRes.ok) {
+        const data = await parentRes.json();
+        const parents: ParentUser[] = (data.users || []).map((p: any) => ({
+          id: p.id,
+          full_name: p.full_name,
+          email: p.email,
+          created_at: p.created_at,
+          verification_status: p.verification_status ?? null,
+        }));
+        setAllParents(parents);
       }
 
       // ── All Bookings ──
@@ -567,6 +594,26 @@ export function AdminManagementPanel() {
     }
   };
 
+  // ─── Parent Verification Handlers ──────────────────────────────────────────
+
+  const handleParentVerification = async (parentId: string, status: 'verified' | 'rejected') => {
+    if (
+      status === 'rejected' &&
+      !confirm('Reject this parent verification? They will remain blocked from bookings.')
+    )
+      return;
+    try {
+      const res = await authenticatedPut('/api/users', { id: parentId, verification_status: status });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || `Failed to set parent as ${status}`);
+      }
+      await loadData();
+    } catch (error: any) {
+      alert(error.message || `Failed to set parent as ${status}.`);
+    }
+  };
+
   // ─── Newsletter Handlers ──────────────────────────────────────────────────
 
   const resetNewsletterForm = () => {
@@ -770,7 +817,19 @@ export function AdminManagementPanel() {
       ? allTrainers.filter((t) => !t.approval_status || t.approval_status === 'approved')
       : allTrainers.filter((t) => t.approval_status === trainerFilter);
 
+  const getParentVerificationStatus = (parent: ParentUser): ParentFilter => {
+    if (parent.verification_status === 'verified') return 'verified';
+    if (parent.verification_status === 'rejected') return 'rejected';
+    return 'pending';
+  };
+
+  const filteredParents =
+    parentFilter === 'all'
+      ? allParents
+      : allParents.filter((p) => getParentVerificationStatus(p) === parentFilter);
+
   const pendingTrainerCount = allTrainers.filter((t) => t.approval_status === 'pending').length;
+  const pendingParentCount = allParents.filter((p) => getParentVerificationStatus(p) === 'pending').length;
   const pendingBookingCount = allBookings.filter((b) => b.status === 'pending').length;
 
   // ─── Loading State ────────────────────────────────────────────────────────
@@ -807,6 +866,12 @@ export function AdminManagementPanel() {
       icon: <UserIcon className="h-4 w-4" />,
     },
     {
+      id: 'parents',
+      label: 'Parents',
+      count: pendingParentCount || undefined,
+      icon: <UserGroupIcon className="h-4 w-4" />,
+    },
+    {
       id: 'newsletters',
       label: 'Newsletters',
       icon: <NewspaperIcon className="h-4 w-4" />,
@@ -823,7 +888,7 @@ export function AdminManagementPanel() {
       <CardHeader className="bg-[rgb(0_32_96)] text-white">
         <CardTitle className="text-xl">Admin Management</CardTitle>
         <CardDescription className="text-blue-200">
-          Manage bookings, trainer approvals, newsletters, and events
+          Manage bookings, trainer and parent approvals, newsletters, and events
         </CardDescription>
       </CardHeader>
 
@@ -1198,6 +1263,124 @@ export function AdminManagementPanel() {
                           >
                             <XMarkIcon className="h-4 w-4 mr-1" />
                             Deactivate
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════════ PARENTS TAB ═══════════════ */}
+        {activeTab === 'parents' && (
+          <div className="p-6">
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              {(
+                [
+                  { value: 'pending', label: 'Pending Verification' },
+                  { value: 'verified', label: 'Verified' },
+                  { value: 'rejected', label: 'Rejected' },
+                  { value: 'all', label: 'All' },
+                ] as Array<{ value: ParentFilter; label: string }>
+              ).map(({ value: f, label }) => {
+                const count =
+                  f === 'all'
+                    ? allParents.length
+                    : allParents.filter((p) => getParentVerificationStatus(p) === f).length;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setParentFilter(f)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      parentFilter === f
+                        ? 'bg-[rgb(0_32_96)] text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {filteredParents.length === 0 ? (
+              <div className="text-center py-14 text-gray-400">
+                <UserGroupIcon className="h-14 w-14 mx-auto mb-3 text-gray-200" />
+                <p className="font-semibold text-gray-500">No parents</p>
+                <p className="text-sm mt-1">
+                  {parentFilter === 'pending'
+                    ? 'No parents awaiting verification'
+                    : parentFilter === 'verified'
+                    ? 'No verified parents yet'
+                    : parentFilter === 'rejected'
+                    ? 'No rejected parents'
+                    : 'No parent accounts found'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredParents.map((parent) => {
+                  const status = getParentVerificationStatus(parent);
+                  const isPending = status === 'pending';
+                  const isVerified = status === 'verified';
+                  const isRejected = status === 'rejected';
+                  return (
+                    <div
+                      key={parent.id}
+                      className="flex items-start sm:items-center justify-between p-4 bg-white border border-gray-200 rounded-xl gap-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="font-semibold text-gray-900">{parent.full_name}</span>
+                          {isPending && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                              Pending Verification
+                            </span>
+                          )}
+                          {isVerified && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                              Verified
+                            </span>
+                          )}
+                          {isRejected && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-medium">
+                              Rejected
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600">{parent.email}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Registered{' '}
+                          {new Date(parent.created_at).toLocaleDateString('en-ZA', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        {!isVerified && (
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => handleParentVerification(parent.id, 'verified')}
+                          >
+                            <CheckIcon className="h-4 w-4 mr-1" />
+                            Verify
+                          </Button>
+                        )}
+                        {!isRejected && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => handleParentVerification(parent.id, 'rejected')}
+                          >
+                            <XMarkIcon className="h-4 w-4 mr-1" />
+                            Reject
                           </Button>
                         )}
                       </div>

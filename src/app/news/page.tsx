@@ -143,34 +143,11 @@ export default function NewsPage() {
           </p>
         </div>
 
-        {/* Main Grid: Facebook (left) | Newsletters + Events (right) */}
+        {/* Main Layout: Newsletters -> Events -> Facebook */}
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,480px)_1fr] gap-8 items-start">
 
-          {/* ======= LEFT: FACEBOOK FEED ======= */}
-          <section className="lg:sticky lg:top-24" aria-labelledby="social-heading">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-1 h-7 bg-blue-600 rounded-full flex-shrink-0" />
-              <PhotoIcon className="h-5 w-5 text-[rgb(0_32_96)]" />
-              <h2 id="social-heading" className="text-xl font-bold text-[rgb(0_32_96)]">
-                Latest from Facebook
-              </h2>
-            </div>
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-              <iframe
-                title="Just Dogs on Facebook — recent posts"
-                src={facebookPagePluginSrc(480, 680)}
-                width="100%"
-                height={680}
-                style={{ border: 'none', overflow: 'hidden' }}
-                allow="encrypted-media"
-                loading="lazy"
-                className="w-full min-h-[400px] sm:min-h-[680px] block"
-              />
-            </div>
-          </section>
-
           {/* ======= RIGHT: NEWSLETTERS + EVENTS ======= */}
-          <div className="space-y-10 min-w-0">
+          <div className="space-y-10 min-w-0 lg:order-1">
 
             {/* NEWSLETTERS */}
             <section aria-labelledby="newsletters-heading">
@@ -426,6 +403,29 @@ export default function NewsPage() {
             </section>
 
           </div>
+
+          {/* ======= LEFT: FACEBOOK FEED ======= */}
+          <section className="lg:sticky lg:top-24 lg:order-2" aria-labelledby="social-heading">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-1 h-7 bg-blue-600 rounded-full flex-shrink-0" />
+              <PhotoIcon className="h-5 w-5 text-[rgb(0_32_96)]" />
+              <h2 id="social-heading" className="text-xl font-bold text-[rgb(0_32_96)]">
+                Latest from Facebook
+              </h2>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+              <iframe
+                title="Just Dogs on Facebook — recent posts"
+                src={facebookPagePluginSrc(480, 680)}
+                width="100%"
+                height={680}
+                style={{ border: 'none', overflow: 'hidden' }}
+                allow="encrypted-media"
+                loading="lazy"
+                className="w-full min-h-[400px] sm:min-h-[680px] block"
+              />
+            </div>
+          </section>
         </div>
 
         {/* Stay Connected CTA */}

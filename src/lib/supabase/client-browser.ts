@@ -22,7 +22,8 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     storageKey: 'sb-pajtampwqutuuidklxbv-auth-token', // Use consistent storage key with project ref
-    debug: process.env.NODE_ENV === 'development',
+    // Keep auth debug logs off by default; enable only when explicitly needed.
+    debug: process.env.NEXT_PUBLIC_SUPABASE_AUTH_DEBUG === 'true',
   },
   global: {
     headers: {
