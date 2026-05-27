@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { authenticatedGet, authenticatedPost } from '@/lib/api/apiClient';
 import { 
   ShoppingCartIcon,
   CreditCardIcon,
@@ -51,13 +52,17 @@ export default function CheckoutPage() {
 
   const loadCart = async () => {
     try {
-      const response = await fetch('/api/store/cart');
+      const response = await authenticatedGet('/api/store/cart');
       if (response.ok) {
         const data = await response.json();
         setCart(data);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any).error || 'Failed to load cart');
       }
     } catch (error) {
       console.error('Error loading cart:', error);
+      alert(error instanceof Error ? error.message : 'Failed to load cart.');
     } finally {
       setLoading(false);
     }
@@ -84,17 +89,13 @@ export default function CheckoutPage() {
         }))
       };
 
-      const response = await fetch('/api/store/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderData)
-      });
+      const response = await authenticatedPost('/api/store/orders', orderData);
 
       if (response.ok) {
         const order = await response.json();
         
         // Clear cart after successful order
-        await fetch('/api/store/cart/clear', { method: 'POST' });
+        await authenticatedPost('/api/store/cart/clear');
         
         // Redirect to order confirmation
         router.push(`/store/orders/${order.id}`);

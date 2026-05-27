@@ -78,6 +78,9 @@ export default function StorePage() {
       if (response.ok) {
         const data = await response.json();
         setCart(data);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any).error || 'Failed to load cart');
       }
     } catch (error) {
       console.error('Error loading cart:', error);
@@ -92,10 +95,15 @@ export default function StorePage() {
       });
       
       if (response.ok) {
-        loadCart();
+        await loadCart();
+        setShowCart(true);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any).error || 'Failed to add item to cart');
       }
     } catch (error) {
       console.error('Error adding to cart:', error);
+      alert(error instanceof Error ? error.message : 'Failed to add item to cart.');
     }
   };
 
@@ -112,10 +120,14 @@ export default function StorePage() {
       });
       
       if (response.ok) {
-        loadCart();
+        await loadCart();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any).error || 'Failed to update cart');
       }
     } catch (error) {
       console.error('Error updating cart:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update cart.');
     }
   };
 
@@ -124,10 +136,14 @@ export default function StorePage() {
       const response = await authenticatedDelete(`/api/store/cart?item_id=${itemId}`);
       
       if (response.ok) {
-        loadCart();
+        await loadCart();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any).error || 'Failed to remove cart item');
       }
     } catch (error) {
       console.error('Error removing from cart:', error);
+      alert(error instanceof Error ? error.message : 'Failed to remove cart item.');
     }
   };
 

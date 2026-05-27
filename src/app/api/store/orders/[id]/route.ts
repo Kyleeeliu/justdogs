@@ -14,12 +14,13 @@ export async function GET(
 
     const supabase = createServiceRoleClient();
 
-    // Check if user is admin to see all orders
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userRow } = await supabase
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
+
+    const isAdmin = userRow?.role === 'admin';
 
     // Build the query based on user role
     let queryBuilder = supabase
@@ -33,8 +34,7 @@ export async function GET(
       `)
       .eq('id', params.id);
 
-    // If not admin, only show user's own orders
-    if (!profile || profile.role !== 'admin') {
+    if (!isAdmin) {
       queryBuilder = queryBuilder.eq('user_id', user.id);
     }
 

@@ -28,18 +28,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 
-    // Check if user is admin to see all orders
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userRow } = await supabase
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
+
+    const isAdmin = userRow?.role === 'admin';
 
     let query = supabase
       .from('store_orders')
       .select(`
         *,
-        profiles!store_orders_user_id_fkey (full_name, email),
         store_order_items (
           *,
           store_items (name, price)
@@ -47,8 +47,7 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false });
 
-    // If not admin, only show user's own orders
-    if (!profile || profile.role !== 'admin') {
+    if (!isAdmin) {
       query = query.eq('user_id', user.id);
     }
 
@@ -64,7 +63,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
     }
 
-    return NextResponse.json(orders);
+    const orderList = orders ?? [];
+    const userIds = [...new Set(orderList.map((o) => o.user_id))];
+    let userMap = new Map<string, { full_name: string; email: string }>();
+
+    if (userIds.length > 0) {
+      const { data: orderUsers, error: usersError } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .in('id', userIds);
+
+      if (usersError) {
+        console.error('Error fetching order customers:', usersError);
+      } else {
+        userMap = new Map(
+          (orderUsers ?? []).map((u) => [u.id, { full_name: u.full_name, email: u.email }])
+        );
+      }
+    }
+
+    const ordersWithUsers = orderList.map((order) => ({
+      ...order,
+      users: userMap.get(order.user_id) ?? { full_name: 'Unknown', email: '' },
+    }));
+
+    return NextResponse.json(ordersWithUsers);
   } catch (error) {
     console.error('Orders GET API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -125,6 +148,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create order items' }, { status: 500 });
     }
 
+    // Notify all admins about the new order (best-effort; don't fail order on message errors).
+    try {
+      const { data: orderingUser } = await supabase
+        .from('users')
+        .select('full_name, email')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const { data: admins, error: adminsError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin');
+
+      if (adminsError) {
+        console.error('Failed to fetch admins for order notification:', adminsError);
+      } else if (admins && admins.length > 0) {
+        const orderRef = (order as any).order_number || order.id;
+        const customerName = orderingUser?.full_name || user.email || 'A customer';
+        const total = typeof total_amount === 'number' ? total_amount.toFixed(2) : String(total_amount);
+
+        const storeItemIds = (items as OrderItemInput[]).map((item) => item.store_item_id);
+        const { data: storeItems } = await supabase
+          .from('store_items')
+          .select('id, name')
+          .in('id', storeItemIds);
+        const nameById = new Map((storeItems || []).map((si: any) => [si.id, si.name]));
+        const itemSummary = (items as OrderItemInput[])
+          .map((item) => `${nameById.get(item.store_item_id) || 'item'} x${item.quantity}`)
+          .join(', ');
+
+        const adminMessages = admins.map((admin) => ({
+          sender_id: user.id,
+          recipient_id: admin.id,
+          subject: `New order: ${customerName}`,
+          content: `${customerName} ordered ${itemSummary} (Order ${orderRef}, Total R${total}).`,
+          message_type: 'text',
+          is_announcement: false,
+        }));
+
+        const { error: messageError } = await supabase.from('messages').insert(adminMessages);
+        if (messageError) {
+          console.error('Failed to create admin order notifications:', messageError);
+        }
+      }
+    } catch (notificationError) {
+      console.error('Unexpected admin order notification error:', notificationError);
+    }
+
     // Clear the user's shopping cart
     await supabase
       .from('shopping_cart')
@@ -147,14 +218,13 @@ export async function PUT(request: NextRequest) {
 
     const supabase = createServiceRoleClient();
     
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userRow } = await supabase
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (!profile || profile.role !== 'admin') {
+    if (userRow?.role !== 'admin') {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

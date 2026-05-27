@@ -20,7 +20,7 @@ type ExportOrder = {
   collection_note: string | null;
   created_at: string;
   approved_at: string | null;
-  profiles: {
+  users: {
     full_name: string;
     email: string;
   };
@@ -36,23 +36,20 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceRoleClient();
 
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userRow } = await supabase
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (!profile || profile.role !== 'admin') {
+    if (userRow?.role !== 'admin') {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    // Fetch all orders with related data
     const { data: orders, error } = await supabase
       .from('store_orders')
       .select(`
         *,
-        profiles!store_orders_user_id_fkey (full_name, email),
         store_order_items (
           *,
           store_items (name, price)
@@ -64,6 +61,31 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching orders for export:', error);
       return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
     }
+
+    const orderList = orders ?? [];
+    const userIds = [...new Set(orderList.map((o) => o.user_id))];
+    let userMap = new Map<string, { full_name: string; email: string }>();
+
+    if (userIds.length > 0) {
+      const { data: orderUsers, error: usersError } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .in('id', userIds);
+
+      if (usersError) {
+        console.error('Error fetching order customers for export:', usersError);
+        return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
+      }
+
+      userMap = new Map(
+        (orderUsers ?? []).map((u) => [u.id, { full_name: u.full_name, email: u.email }])
+      );
+    }
+
+    const ordersWithUsers = orderList.map((order) => ({
+      ...order,
+      users: userMap.get(order.user_id) ?? { full_name: 'Unknown', email: '' },
+    }));
 
     // Generate CSV content
     const csvHeaders = [
@@ -81,15 +103,15 @@ export async function GET(request: NextRequest) {
       'Approved Date'
     ];
 
-    const csvRows = (orders as ExportOrder[]).map((order) => {
+    const csvRows = (ordersWithUsers as ExportOrder[]).map((order) => {
       const items = order.store_order_items
-        .map((item) => `${item.store_items.name} (${item.quantity}x $${item.unit_price})`)
+        .map((item) => `${item.store_items.name} (${item.quantity}x R${item.unit_price})`)
         .join('; ');
 
       return [
         order.order_number,
-        order.profiles.full_name,
-        order.profiles.email,
+        order.users.full_name,
+        order.users.email,
         order.status,
         order.payment_method,
         order.total_amount,

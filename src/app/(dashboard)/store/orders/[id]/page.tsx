@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { authenticatedGet } from '@/lib/api/apiClient';
 import { 
   CheckCircleIcon,
   ClockIcon,
@@ -48,6 +49,7 @@ export default function OrderDetailsPage() {
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (params.id) {
@@ -56,16 +58,28 @@ export default function OrderDetailsPage() {
   }, [params.id]);
 
   const loadOrder = async () => {
+    const orderId = Array.isArray(params.id) ? params.id[0] : params.id;
+    if (!orderId) {
+      setLoadError('Order not found');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/store/orders/${params.id}`);
+      const response = await authenticatedGet(`/api/store/orders/${orderId}`);
       if (response.ok) {
         const data = await response.json();
         setOrder(data);
+        setLoadError(null);
       } else if (response.status === 404) {
         router.push('/store');
+      } else {
+        const error = await response.json().catch(() => ({}));
+        setLoadError((error as any).error || 'Failed to load order');
       }
     } catch (error) {
       console.error('Error loading order:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load order');
     } finally {
       setLoading(false);
     }
@@ -82,8 +96,10 @@ export default function OrderDetailsPage() {
   if (!order) {
     return (
       <div className="text-center py-12">
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Order not found</h3>
-        <p className="text-gray-600 mb-6">The order you're looking for doesn't exist or you don't have access to it.</p>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">{loadError ? 'Unable to load order' : 'Order not found'}</h3>
+        <p className="text-gray-600 mb-6">
+          {loadError || "The order you're looking for doesn't exist or you don't have access to it."}
+        </p>
         <Button onClick={() => router.push('/store')} className="bg-[rgb(0_32_96)] hover:bg-[rgb(0_32_96)]/90">
           <ArrowLeftIcon className="h-4 w-4 mr-2" />
           Back to Store

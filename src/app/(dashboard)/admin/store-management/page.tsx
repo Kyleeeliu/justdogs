@@ -39,7 +39,7 @@ interface Order {
   collection_note: string;
   total_amount: number;
   created_at: string;
-  profiles: {
+  users: {
     full_name: string;
     email: string;
   };
@@ -398,7 +398,7 @@ export default function StoreManagementPage() {
                   </div>
                   
                   <p className="text-gray-600 mb-2">
-                    Customer: {order.profiles.full_name} ({order.profiles.email})
+                    Customer: {order.users.full_name} ({order.users.email})
                   </p>
                   
                   <p className="text-gray-600 mb-2">
@@ -547,7 +547,7 @@ export default function StoreManagementPage() {
                 <strong>Order Number:</strong> {selectedOrder.order_number}
               </div>
               <div>
-                <strong>Customer:</strong> {selectedOrder.profiles.full_name} ({selectedOrder.profiles.email})
+                <strong>Customer:</strong> {selectedOrder.users.full_name} ({selectedOrder.users.email})
               </div>
               <div>
                 <strong>Status:</strong> {selectedOrder.status}
