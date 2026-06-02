@@ -1,5 +1,5 @@
 # Just Dogs Training App 🐕
-
+Screenshots 1-9 are of the app
 A comprehensive dog training management application for Just Dogs, a Cape Town-based dog training company. This app helps trainers, parents, and administrators manage training sessions, dog profiles, scheduling, billing, and communication.
 
 ## Features
